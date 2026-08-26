@@ -1,0 +1,23 @@
+seed: 17
+model: Qwen/Qwen2.5-7B
+output_dir: outputs/qwen25_7b_32k
+dtype: bfloat16
+device: cuda:0
+max_length: 32768
+corpora:
+  pg19: 4
+segment:
+  min_tokens: 6
+  max_tokens: 32
+analysis:
+  layers: [0, 13, 27]
+  block_sizes: [32]
+  top_k: [8]
+  local_window: 128
+  sink_tokens: 4
+  split_repeats: 1
+  pair_samples: 8
+  bootstrap_samples: 2000
+  token_supplement: 2
+  regions: [remote]
+
