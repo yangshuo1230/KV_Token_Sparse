@@ -4,7 +4,7 @@
 
 This experiment evaluates Qwen2.5-7B on 16 PG-19 documents of exactly 32,768
 tokens. The final 64 target tokens in each document are scored, giving 1,024
-targets and 12,288 target-policy observations.
+targets.
 
 Each compact policy has a fixed total KV budget of 128, 512, 1,024, 2,048,
 4,096, or 8,192 positions. Within each budget, the policy retains either 0, 4, or 16 prefix
@@ -12,6 +12,8 @@ tokens and spends the remainder on the most recent tokens. This gives 18,432
 target-policy observations. Thus the sink-aware
 policies do not receive extra KV capacity. All retained tokens keep their
 original absolute position IDs.
+An explicit compact-order causal mask prevents the non-contiguous original
+positions from being interpreted as separate packed sequences.
 
 Target labels include a broad category, fine lexical class, universal POS,
 dependency relation, and first/continuation-subtoken status. Means and 95%
@@ -25,10 +27,10 @@ context.
 
 | Total KV budget | Content ΔCE | Function ΔCE | Content − function (95% CI) |
 |---:|---:|---:|---:|
-| 128 | 0.6013 | 0.1276 | +0.4737 `[+0.3070,+0.6469]` |
-| 512 | 0.2924 | 0.0505 | +0.2419 `[+0.1011,+0.4185]` |
-| 2,048 | 0.1164 | -0.0013 | +0.1177 `[+0.0323,+0.2193]` |
-| 8,192 | 0.0056 | 0.0135 | -0.0079 `[-0.0427,+0.0276]` |
+| 128 | 0.6121 | 0.1226 | +0.4895 `[+0.3185,+0.6771]` |
+| 512 | 0.2907 | 0.0522 | +0.2385 `[+0.0885,+0.4073]` |
+| 2,048 | 0.1117 | -0.0052 | +0.1169 `[+0.0295,+0.2184]` |
+| 8,192 | 0.0044 | 0.0076 | -0.0033 `[-0.0402,+0.0323]` |
 
 The association is not limited to correct-target probability. Content-minus-
 function differences in full-to-compact KL are +0.2462, +0.1499, and +0.0881
@@ -47,16 +49,16 @@ represented category means are:
 
 | Target class | ΔCE | Documents | Targets |
 |---|---:|---:|---:|
-| Proper noun | 2.1758 | 13 | 41 |
-| Adverb | 0.6809 | 11 | 31 |
-| Common noun | 0.5620 | 16 | 168 |
-| Verb | 0.4344 | 16 | 104 |
-| Adjective | 0.3289 | 14 | 66 |
-| Punctuation | 0.2468 | 16 | 105 |
-| Auxiliary | 0.2270 | 14 | 52 |
-| Determiner | 0.1995 | 16 | 65 |
-| Pronoun | 0.1883 | 15 | 101 |
-| Adposition | 0.0943 | 16 | 94 |
+| Proper noun | 2.2630 | 13 | 41 |
+| Adverb | 0.6634 | 11 | 31 |
+| Common noun | 0.5497 | 16 | 168 |
+| Verb | 0.4724 | 16 | 104 |
+| Adjective | 0.3460 | 14 | 66 |
+| Punctuation | 0.2373 | 16 | 105 |
+| Determiner | 0.2185 | 16 | 65 |
+| Pronoun | 0.2058 | 15 | 101 |
+| Auxiliary | 0.1660 | 14 | 52 |
+| Adposition | 0.0826 | 16 | 94 |
 
 After subtracting each document's overall mean, proper nouns remain +1.8453
 above the document baseline (95% CI `[+0.5077,+3.5749]`) and common nouns
@@ -74,7 +76,7 @@ the 128-position budget: ΔCE difference +0.1721, 95% CI
 Replacing recent positions with four or sixteen prefix positions does not
 improve average target prediction at a fixed total budget. Most sink-minus-
 recent-only contrasts are close to zero. At budget 128, a four-token sink
-slightly *increases* function-token ΔCE by +0.0264 (`[+0.0095,+0.0464]`).
+slightly *increases* function-token ΔCE by +0.0215 (`[+0.0044,+0.0427]`).
 
 This does not imply that attention sinks can be discarded in a streaming
 deployment. The present experiment recomputes a compact sequence with original

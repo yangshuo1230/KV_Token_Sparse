@@ -14,22 +14,22 @@ post-hoc POS label:
 
 All predictions are out-of-document: four-fold cross-validation trains each
 lookup on 12 documents and evaluates it on four held-out documents. The input
-lookup obtains target-type ROC AUC 0.6322; the draft lookup obtains 0.7493.
+lookup obtains target-type ROC AUC 0.6322; the draft lookup obtains 0.7333.
 
 ## Equal-average-budget routing
 
 Each router chooses between a low and high budget. The fraction assigned high
 budget is fixed so its mean KV count matches a measured static intermediate
-budget. Results use four sink tokens.
+budget. Results use recent-only caches.
 
 | Router | Low/high | Mean/static KV | Router ΔCE | Static ΔCE | Difference (95% CI) |
 |---|---:|---:|---:|---:|---:|
-| Input lookup | 128/2,048 | 512.4/512 | 0.2674 | 0.1534 | +0.1140 `[+0.0750,+0.1574]` |
-| Draft lookup | 128/2,048 | 512.4/512 | 0.2517 | 0.1534 | +0.0982 `[+0.0427,+0.1541]` |
-| Input lookup | 512/2,048 | 1,023.5/1,024 | 0.1248 | 0.0831 | +0.0417 `[+0.0059,+0.0822]` |
-| Draft lookup | 512/2,048 | 1,023.5/1,024 | 0.1066 | 0.0831 | +0.0236 `[-0.0041,+0.0536]` |
-| Input lookup | 2,048/8,192 | 4,094/4,096 | 0.0416 | 0.0184 | +0.0232 `[-0.0116,+0.0713]` |
-| Draft lookup | 2,048/8,192 | 4,094/4,096 | 0.0183 | 0.0184 | -0.0001 `[-0.0139,+0.0127]` |
+| Input lookup | 128/2,048 | 512.4/512 | 0.2545 | 0.1560 | +0.0985 `[+0.0589,+0.1412]` |
+| Draft lookup | 128/2,048 | 512.4/512 | 0.2355 | 0.1560 | +0.0795 `[+0.0248,+0.1355]` |
+| Input lookup | 512/2,048 | 1,023.5/1,024 | 0.1251 | 0.0818 | +0.0433 `[+0.0068,+0.0847]` |
+| Draft lookup | 512/2,048 | 1,023.5/1,024 | 0.1058 | 0.0818 | +0.0240 `[-0.0016,+0.0530]` |
+| Input lookup | 2,048/8,192 | 4,094/4,096 | 0.0409 | 0.0176 | +0.0233 `[-0.0096,+0.0704]` |
+| Draft lookup | 2,048/8,192 | 4,094/4,096 | 0.0186 | 0.0176 | +0.0010 `[-0.0138,+0.0174]` |
 
 The lightweight input lookup is not Pareto competitive. The auxiliary draft
 lookup matches static quality only at the largest plan, but the difference is

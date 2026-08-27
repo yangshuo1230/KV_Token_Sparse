@@ -1,0 +1,2 @@
+context_length,recent_budget,long_context_delta_ce,long_context_fraction,block_size,sparse_remote_budget,rounded_recent_tokens,rounded_sparse_remote_tokens,dense_kv_reads,v1_mean_kv_reads,v2_mean_kv_reads,v1_attention_upper_bound_speedup,v2_attention_upper_bound_speedup,v1_kv_read_reduction,v2_kv_read_reduction
+32768,2048,0.1,0.248046875,128,4096,2048.0,4096.0,32768.0,9668.0,3064.0,3.3893256102606535,10.694516971279374,0.7049560546875,0.906494140625

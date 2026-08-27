@@ -5,8 +5,10 @@ import torch
 
 from kvstudy.config import Config, ContextConfig
 from kvstudy.token_context.categories import lexical_categories
+from kvstudy.token_context.block_attention import recent_page_indices, select_sparse_pages
 from kvstudy.token_context.experiment import _distribution_metrics, retained_indices
 from kvstudy.token_context.kv_cache import cache_token_count, prune_legacy_cache
+from kvstudy.token_context.profile import theoretical_attention_cost
 from kvstudy.token_context.report import summarize_context
 from kvstudy.token_context.router import cross_validated_type_scores
 
@@ -101,3 +103,30 @@ def test_type_lookup_scores_are_out_of_document():
     # Each fold contains an unseen token ID, so it must use the opposite
     # document's prior rather than leaking the held-out labels.
     assert scores.tolist() == [0.0, 0.0, 1.0, 1.0]
+
+
+def test_theoretical_attention_cost_rounds_to_small_blocks():
+    result = theoretical_attention_cost(
+        context_length=16384,
+        recent_tokens=2000,
+        long_fraction=0.25,
+        sparse_remote_tokens=1000,
+        block_size=128,
+    )
+    assert result["rounded_recent_tokens"] == 2048
+    assert result["rounded_sparse_remote_tokens"] == 1024
+    assert result["v1_mean_kv_reads"] == 5632
+    assert result["v2_mean_kv_reads"] == 2304
+    assert result["v2_attention_upper_bound_speedup"] > result[
+        "v1_attention_upper_bound_speedup"
+    ]
+
+
+def test_sparse_page_selection_always_includes_sink_and_recent():
+    query = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    landmarks = torch.zeros(8, 1, 2)
+    landmarks[3, 0, 0] = 10
+    landmarks[4, 0, 1] = 8
+    recent = recent_page_indices(8 * 128, 2 * 128, 128)
+    selected = select_sparse_pages(query, landmarks, recent, remote_pages=2, sink_pages=1)
+    assert selected.tolist() == [0, 3, 4, 6, 7]

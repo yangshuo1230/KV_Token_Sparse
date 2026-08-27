@@ -28,7 +28,8 @@ the experimental treatment.
 - Configs: `configs/token_context/`
 - Results: `outputs/token_context/`
 - Main commands: `context-prepare`, `context-run`, `context-summarize`,
-  `context-evaluate-router`, and `context-benchmark-cache`
+  `context-profile-need`, `context-run-sparse`, `context-benchmark-attention`,
+  `context-benchmark-inference`, and `context-report-engineering`
 
 The reports named `LONG_CONTEXT_RESULTS.md` and `TARGET_TOKEN_RESULTS.md`
 predate the sink-aware experiment. They compare a full context with suffix-only
@@ -40,6 +41,16 @@ The checked-in systematic reports cover Qwen2.5-7B and a same-document
 Qwen2.5-0.5B replication. Both find that content targets need more context than
 function targets at 128, 512, and 2,048 retained positions, with the difference
 disappearing at 8,192 positions.
+
+The adaptive inference prototype uses 128-token KV pages, a mandatory
+2,048-token recent window, full-context fallback for V1, and query-selected
+remote pages for V2. See
+`outputs/token_context/qwen25_7b_32k/ADAPTIVE_INFERENCE_RESULTS.md` for the
+profile, theoretical model, 16K/24K end-to-end benchmarks, 32K sparse-quality
+results, and explicit negative results. On the measured PPU, V1 reaches a
+1.055x mean end-to-end speedup at 24K but not 16K; V2 currently needs a fused
+recent-plus-paged kernel to turn its attention-level gain into a robust
+end-to-end gain.
 
 ## Shared infrastructure
 
@@ -79,7 +90,26 @@ CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run --config configs/token_cont
 CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
 CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
 python -m kvstudy context-summarize --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy context-profile-need --config configs/token_context/qwen25_7b_32k.yaml
 ```
+
+Run the V2 32K sparse-quality experiment (one process per GPU), summarize it,
+then benchmark optimized kernels and real decode:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
+CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
+CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
+CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
+python -m kvstudy context-summarize-sparse --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy context-benchmark-attention --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 32768
+python -m kvstudy context-benchmark-inference --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 --decode-tokens 128
+python -m kvstudy context-report-engineering --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+FlashInfer is required only for the optimized decode commands; the profiling
+and quality-analysis commands remain ordinary PyTorch/Transformers code. Install
+the kernel dependencies with `python -m pip install -r requirements-kernels.txt`.
 
 Evaluate the causal lightweight router and exercise real `DynamicCache`
 pruning:

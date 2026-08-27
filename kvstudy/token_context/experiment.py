@@ -151,9 +151,23 @@ def run_context_ablation(
                 indices = retained_indices(length, cache_budget, sink_size)
                 compact_ids = ids[:, indices]
                 compact_positions = positions[:, indices]
+                compact_mask = None
+                if sink_size:
+                    # Preserve compact causal order while retaining original
+                    # absolute positions for RoPE. Otherwise Transformers sees
+                    # the sink/recent gap as a packed-sequence boundary and
+                    # masks the sink from every recent query.
+                    compact_length = len(indices)
+                    compact_mask = torch.full(
+                        (compact_length, compact_length),
+                        torch.finfo(getattr(torch, cfg.dtype)).min,
+                        dtype=getattr(torch, cfg.dtype),
+                        device=cfg.device,
+                    ).triu(diagonal=1)[None, None]
                 compact_hidden = base(
                     input_ids=compact_ids,
                     position_ids=compact_positions,
+                    attention_mask=compact_mask,
                     use_cache=False,
                     return_dict=True,
                 ).last_hidden_state[:, -(eval_tokens + 1):-1]
@@ -185,7 +199,7 @@ def run_context_ablation(
                         "recent_size": recent_size,
                         **{name: values[offset] for name, values in metrics.items()},
                     })
-                del compact_hidden, compact_logits
+                del compact_hidden, compact_logits, compact_mask
         del full_hidden, full_logits
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

@@ -8,10 +8,16 @@ from .semantic.experiment import run as run_semantic
 from .semantic.report import summarize as summarize_semantic
 from .semantic.representations import diagnose_representations
 from .token_context.ablation import diagnose_context_length
+from .token_context.attention_benchmark import benchmark_decode_attention
 from .token_context.benchmark import benchmark_cache
 from .token_context.experiment import prepare_contexts, run_context_ablation
+from .token_context.inference_benchmark import benchmark_v1_inference
+from .token_context.engineering_report import write_engineering_report
+from .token_context.profile import profile_context_need
 from .token_context.report import summarize_context
 from .token_context.router import evaluate_router
+from .token_context.sparse_experiment import run_sparse_context_ablation
+from .token_context.sparse_report import summarize_sparse_context
 
 
 COMMANDS = (
@@ -23,8 +29,15 @@ COMMANDS = (
     "context-prepare",
     "context-run",
     "context-summarize",
+    "context-profile-need",
     "context-evaluate-router",
     "context-benchmark-cache",
+    "context-benchmark-attention",
+    "context-benchmark-v1-inference",
+    "context-benchmark-inference",
+    "context-run-sparse",
+    "context-summarize-sparse",
+    "context-report-engineering",
 )
 
 
@@ -41,7 +54,13 @@ def main() -> None:
         if name == "context-benchmark-cache":
             command.add_argument("--prefill-tokens", type=int, default=8192)
             command.add_argument("--repeats", type=int, default=20)
-        if name in {"semantic-run", "context-run"}:
+        if name == "context-benchmark-attention":
+            command.add_argument("--context-lengths", type=int, nargs="+", default=[16384, 24576])
+            command.add_argument("--repeats", type=int, default=100)
+        if name in {"context-benchmark-v1-inference", "context-benchmark-inference"}:
+            command.add_argument("--context-lengths", type=int, nargs="+", default=[16384, 24576])
+            command.add_argument("--decode-tokens", type=int, default=64)
+        if name in {"semantic-run", "context-run", "context-run-sparse"}:
             command.add_argument("--shard-index", type=int, default=0)
             command.add_argument("--num-shards", type=int, default=1)
     args = parser.parse_args()
@@ -62,10 +81,22 @@ def main() -> None:
         print(run_context_ablation(cfg, args.shard_index, args.num_shards))
     elif args.command == "context-summarize":
         print(*summarize_context(cfg), sep="\n")
+    elif args.command == "context-profile-need":
+        print(*profile_context_need(cfg), sep="\n")
     elif args.command == "context-evaluate-router":
         print(evaluate_router(cfg, load_config(args.draft_config)))
     elif args.command == "context-benchmark-cache":
         print(benchmark_cache(cfg, args.prefill_tokens, args.repeats))
+    elif args.command == "context-benchmark-attention":
+        print(benchmark_decode_attention(cfg, args.context_lengths, args.repeats))
+    elif args.command in {"context-benchmark-v1-inference", "context-benchmark-inference"}:
+        print(benchmark_v1_inference(cfg, args.context_lengths, args.decode_tokens))
+    elif args.command == "context-run-sparse":
+        print(run_sparse_context_ablation(cfg, args.shard_index, args.num_shards))
+    elif args.command == "context-summarize-sparse":
+        print(*summarize_sparse_context(cfg), sep="\n")
+    elif args.command == "context-report-engineering":
+        print(write_engineering_report(cfg))
 
 
 if __name__ == "__main__":

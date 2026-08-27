@@ -49,3 +49,16 @@ def cache_token_count(cache) -> int:
     if hasattr(cache, "to_legacy_cache"):
         cache = cache.to_legacy_cache()
     return int(cache[0][0].shape[-2]) if cache else 0
+
+
+def clone_dynamic_cache(cache):
+    """Clone a DynamicCache so benchmark policies start from identical KV."""
+    from transformers import DynamicCache
+
+    if not isinstance(cache, DynamicCache):
+        raise TypeError(f"expected DynamicCache, got {type(cache).__name__}")
+    legacy = tuple(
+        tuple(tensor.clone() for tensor in layer)
+        for layer in cache.to_legacy_cache()
+    )
+    return DynamicCache.from_legacy_cache(legacy)

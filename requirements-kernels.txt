@@ -1,0 +1,2 @@
+-r requirements.txt
+flashinfer-python>=0.2.6

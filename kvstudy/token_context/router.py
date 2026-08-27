@@ -89,8 +89,10 @@ def evaluate_router(target_cfg: Config, draft_cfg: Config) -> Path:
     if not required <= available:
         raise ValueError(f"router evaluation requires budgets {sorted(required)}")
 
-    target = target[target.sink_size.eq(4)]
-    draft = draft[(draft.sink_size.eq(4)) & (draft.cache_budget.eq(128))]
+    # Route the deployed recent-only policy. Sink variants require an explicit
+    # compact causal mask and are not features available to this predictor.
+    target = target[target.sink_size.eq(0)]
+    draft = draft[(draft.sink_size.eq(0)) & (draft.cache_budget.eq(128))]
     base = target[target.cache_budget.eq(128)].set_index(IDENTITY).sort_index()
     draft = draft.set_index(IDENTITY).reindex(base.index)
     if draft.predicted_token_id.isna().any():

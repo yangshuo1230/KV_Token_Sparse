@@ -12,3 +12,8 @@ context:
   sink_sizes: [0, 4, 16]
   eval_tokens: 64
   bootstrap_samples: 2000
+  block_size: 128
+  profile_recent_budget: 2048
+  long_context_delta_ce: 0.1
+  sparse_remote_budget: 4096
+  sparse_selection_refresh: 128

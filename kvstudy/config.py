@@ -35,6 +35,13 @@ class ContextConfig:
     sink_sizes: list[int] = field(default_factory=lambda: [0, 4, 16])
     eval_tokens: int = 64
     bootstrap_samples: int = 2000
+    # Deployment/profile defaults. 128-token pages keep routing granularity
+    # small while remaining friendly to paged FlashAttention-style kernels.
+    block_size: int = 128
+    profile_recent_budget: int = 2048
+    long_context_delta_ce: float = 0.1
+    sparse_remote_budget: int = 4096
+    sparse_selection_refresh: int = 128
 
 
 @dataclass(frozen=True)
@@ -77,4 +84,14 @@ def load_config(path: str | Path) -> Config:
         raise ValueError("context.eval_tokens must be positive")
     if cfg.context.eval_tokens >= min(cfg.context.cache_budgets) - max(cfg.context.sink_sizes):
         raise ValueError("context.eval_tokens must fit in the smallest recent window")
+    if cfg.context.block_size < 1:
+        raise ValueError("context.block_size must be positive")
+    if cfg.context.profile_recent_budget not in cfg.context.cache_budgets:
+        raise ValueError("context.profile_recent_budget must be one of context.cache_budgets")
+    if cfg.context.long_context_delta_ce < 0:
+        raise ValueError("context.long_context_delta_ce must be non-negative")
+    if cfg.context.sparse_remote_budget < 0:
+        raise ValueError("context.sparse_remote_budget must be non-negative")
+    if cfg.context.sparse_selection_refresh < 1:
+        raise ValueError("context.sparse_selection_refresh must be positive")
     return cfg
