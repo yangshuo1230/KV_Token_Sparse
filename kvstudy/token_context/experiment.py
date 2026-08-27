@@ -69,16 +69,22 @@ def _distribution_metrics(
 ) -> dict[str, list[float]]:
     full_logp = torch.log_softmax(full_logits.float(), dim=-1)
     compact_logp = torch.log_softmax(compact_logits.float(), dim=-1)
+    compact_p = compact_logp.exp()
     rows = torch.arange(targets.numel(), device=targets.device)
     ce_full = -full_logp[rows, targets]
     ce_compact = -compact_logp[rows, targets]
     kl = (full_logp.exp() * (full_logp - compact_logp)).sum(dim=-1)
+    top_values, top_ids = compact_p.topk(2, dim=-1)
     return {
         "ce_full": ce_full.cpu().tolist(),
         "ce_compact": ce_compact.cpu().tolist(),
         "delta_ce": (ce_compact - ce_full).cpu().tolist(),
         "kl_full_to_compact": kl.cpu().tolist(),
         "top1_changed": (full_logits.argmax(-1) != compact_logits.argmax(-1)).cpu().tolist(),
+        "predicted_token_id": top_ids[:, 0].cpu().tolist(),
+        "predicted_token_probability": top_values[:, 0].cpu().tolist(),
+        "prediction_margin": (top_values[:, 0] - top_values[:, 1]).cpu().tolist(),
+        "prediction_entropy": (-(compact_p * compact_logp).sum(dim=-1)).cpu().tolist(),
     }
 
 
@@ -158,6 +164,7 @@ def run_context_ablation(
                 for offset, annotation in enumerate(annotations):
                     target_index = target_start + offset
                     token_id = int(targets[offset])
+                    query_token_id = int(ids[0, target_index - 1])
                     rows.append({
                         "document": record["id"],
                         "corpus": record["corpus"],
@@ -165,6 +172,8 @@ def run_context_ablation(
                         "distance_from_end": length - target_index,
                         "token_id": token_id,
                         "token": tokenizer.decode([token_id]),
+                        "query_token_id": query_token_id,
+                        "query_token": tokenizer.decode([query_token_id]),
                         "coarse_category": annotation.coarse_category,
                         "fine_category": annotation.fine_category,
                         "pos": annotation.pos,

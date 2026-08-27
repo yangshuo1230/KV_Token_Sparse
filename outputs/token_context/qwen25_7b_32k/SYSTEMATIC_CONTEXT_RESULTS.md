@@ -6,9 +6,10 @@ This experiment evaluates Qwen2.5-7B on 16 PG-19 documents of exactly 32,768
 tokens. The final 64 target tokens in each document are scored, giving 1,024
 targets and 12,288 target-policy observations.
 
-Each compact policy has a fixed total KV budget of 128, 512, 2,048, or 8,192
-positions. Within each budget, the policy retains either 0, 4, or 16 prefix
-tokens and spends the remainder on the most recent tokens. Thus the sink-aware
+Each compact policy has a fixed total KV budget of 128, 512, 1,024, 2,048,
+4,096, or 8,192 positions. Within each budget, the policy retains either 0, 4, or 16 prefix
+tokens and spends the remainder on the most recent tokens. This gives 18,432
+target-policy observations. Thus the sink-aware
 policies do not receive extra KV capacity. All retained tokens keep their
 original absolute position IDs.
 

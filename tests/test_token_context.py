@@ -6,7 +6,9 @@ import torch
 from kvstudy.config import Config, ContextConfig
 from kvstudy.token_context.categories import lexical_categories
 from kvstudy.token_context.experiment import _distribution_metrics, retained_indices
+from kvstudy.token_context.kv_cache import cache_token_count, prune_legacy_cache
 from kvstudy.token_context.report import summarize_context
+from kvstudy.token_context.router import cross_validated_type_scores
 
 
 def _token(text: str, pos: str, dep: str = "", punct: bool = False, number: bool = False):
@@ -31,6 +33,15 @@ def test_retained_indices_use_a_fixed_budget():
     assert sink_recent[:4] == [0, 1, 2, 3]
     assert sink_recent[4:] == list(range(876, 1000))
     assert len(recent_only) == len(sink_recent) == 128
+
+
+def test_prune_legacy_cache_retains_sink_and_recent_values():
+    values = torch.arange(20).view(1, 1, 10, 2)
+    cache = ((values, values + 100),)
+    pruned = prune_legacy_cache(cache, cache_budget=4, sink_size=1)
+    assert cache_token_count(pruned) == 4
+    assert pruned[0][0][0, 0, :, 0].tolist() == [0, 14, 16, 18]
+    assert pruned[0][1][0, 0, :, 0].tolist() == [100, 114, 116, 118]
 
 
 def test_distribution_metrics_use_target_token():
@@ -78,3 +89,15 @@ def test_context_summary_pairs_sink_with_recent_control(tmp_path):
         & (sink_frame.metric == "delta_ce")
     ]
     assert selected.iloc[0].mean_difference == 0.25
+
+
+def test_type_lookup_scores_are_out_of_document():
+    frame = pd.DataFrame({
+        "document": ["a", "a", "b", "b"],
+        "query_token_id": [1, 1, 2, 2],
+        "coarse_category": ["content", "content", "function", "function"],
+    })
+    scores = cross_validated_type_scores(frame, "query_token_id", folds=2)
+    # Each fold contains an unseen token ID, so it must use the opposite
+    # document's prior rather than leaking the held-out labels.
+    assert scores.tolist() == [0.0, 0.0, 1.0, 1.0]

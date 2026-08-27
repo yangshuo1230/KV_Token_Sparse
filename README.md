@@ -27,7 +27,8 @@ the experimental treatment.
 
 - Configs: `configs/token_context/`
 - Results: `outputs/token_context/`
-- Main commands: `context-prepare`, `context-run`, and `context-summarize`
+- Main commands: `context-prepare`, `context-run`, `context-summarize`,
+  `context-evaluate-router`, and `context-benchmark-cache`
 
 The reports named `LONG_CONTEXT_RESULTS.md` and `TARGET_TOKEN_RESULTS.md`
 predate the sink-aware experiment. They compare a full context with suffix-only
@@ -78,6 +79,18 @@ CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run --config configs/token_cont
 CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
 CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
 python -m kvstudy context-summarize --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+Evaluate the causal lightweight router and exercise real `DynamicCache`
+pruning:
+
+```bash
+python -m kvstudy context-evaluate-router \
+  --config configs/token_context/qwen25_7b_32k.yaml \
+  --draft-config configs/token_context/qwen25_05b_32k.yaml
+python -m kvstudy context-benchmark-cache \
+  --config configs/token_context/qwen25_7b_32k.yaml \
+  --prefill-tokens 8192 --repeats 20
 ```
 
 Use `python -m kvstudy --help` to list commands. Set `HF_HOME` to relocate

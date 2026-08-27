@@ -8,7 +8,7 @@ max_length: 32768
 corpora:
   pg19: 16
 context:
-  cache_budgets: [128, 512, 2048, 8192]
+  cache_budgets: [128, 512, 1024, 2048, 4096, 8192]
   sink_sizes: [0, 4, 16]
   eval_tokens: 64
   bootstrap_samples: 2000
