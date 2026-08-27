@@ -1,0 +1,14 @@
+seed: 17
+model: Qwen/Qwen2.5-0.5B
+data_dir: artifacts/qwen25_7b_32k
+output_dir: outputs/token_context/qwen25_05b_32k
+dtype: bfloat16
+device: cuda:0
+max_length: 32768
+corpora:
+  pg19: 16
+context:
+  cache_budgets: [128, 512, 2048, 8192]
+  sink_sizes: [0, 4, 16]
+  eval_tokens: 64
+  bootstrap_samples: 2000

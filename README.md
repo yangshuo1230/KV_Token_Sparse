@@ -35,6 +35,11 @@ inputs and are kept as baseline evidence, not as a deployable KV-cache policy.
 The current experiment compares recent-only with sink-plus-recent policies at
 the same total KV budget.
 
+The checked-in systematic reports cover Qwen2.5-7B and a same-document
+Qwen2.5-0.5B replication. Both find that content targets need more context than
+function targets at 128, 512, and 2,048 retained positions, with the difference
+disappearing at 8,192 positions.
+
 ## Shared infrastructure
 
 ```text
