@@ -36,9 +36,6 @@ Other categories at the 128-token suffix show substantial heterogeneity:
 0.673, pronoun 0.558, punctuation 0.515. Rare categories have too few examples
 for reliable ranking.
 
-Run with:
-
-```bash
-python -m kvstudy context-prepare-32k --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-run-32k --config configs/token_context/qwen25_7b_32k.yaml
-```
+This suffix-only implementation has been superseded by the fixed-budget,
+sink-aware experiment in `kvstudy/token_context/experiment.py`. This report is
+retained only as historical baseline evidence.

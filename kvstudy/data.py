@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 from datasets import load_dataset
 from tqdm import tqdm
@@ -23,13 +26,39 @@ class SourceDocument:
     evidence_spans: list[tuple[int, int]]
 
 
+def _pg19_gcs() -> Iterator[SourceDocument]:
+    """Stream the public PG-19 bucket when the Hub mirror is unavailable."""
+    endpoint = "https://storage.googleapis.com/storage/v1/b/deepmind-gutenberg/o"
+    page_token: str | None = None
+    while True:
+        query = {"prefix": "train/", "maxResults": 100}
+        if page_token:
+            query["pageToken"] = page_token
+        with urlopen(f"{endpoint}?{urlencode(query)}", timeout=60) as response:
+            listing = json.load(response)
+        for item in listing.get("items", []):
+            with urlopen(item["mediaLink"], timeout=60) as response:
+                text = response.read().decode("utf-8", errors="replace")
+            doc_id = Path(item["name"]).stem
+            yield SourceDocument(doc_id, "pg19", text, [])
+        page_token = listing.get("nextPageToken")
+        if not page_token:
+            return
+
+
 def _pg19() -> Iterator[SourceDocument]:
     # Parquet mirror of deepmind/pg19. The original loader fetches one Google
     # Storage object per book, which is prohibitively slow on many clusters.
-    ds = load_dataset("emozilla/pg19", split="train", streaming=True)
-    for index, row in enumerate(ds):
-        text = row["text"]
-        yield SourceDocument(str(row.get("short_book_title", row.get("url", index))), "pg19", text, [])
+    try:
+        ds = load_dataset("emozilla/pg19", split="train", streaming=True)
+        for index, row in enumerate(ds):
+            text = row["text"]
+            yield SourceDocument(
+                str(row.get("short_book_title", row.get("url", index))), "pg19", text, []
+            )
+    except (ConnectionError, FileNotFoundError, OSError) as exc:
+        warnings.warn(f"PG-19 Hub mirror unavailable ({exc}); using the public GCS bucket")
+        yield from _pg19_gcs()
 
 
 def _wikipedia() -> Iterator[SourceDocument]:

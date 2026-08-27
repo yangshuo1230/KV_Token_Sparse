@@ -28,6 +28,16 @@ class AnalysisConfig:
 
 
 @dataclass(frozen=True)
+class ContextConfig:
+    """Controls fixed-budget context ablations for target-token prediction."""
+
+    cache_budgets: list[int] = field(default_factory=lambda: [128, 512, 2048, 8192])
+    sink_sizes: list[int] = field(default_factory=lambda: [0, 4, 16])
+    eval_tokens: int = 64
+    bootstrap_samples: int = 2000
+
+
+@dataclass(frozen=True)
 class Config:
     model: str
     output_dir: Path
@@ -40,6 +50,7 @@ class Config:
     position_mode: str = "rope"
     segment: SegmentConfig = field(default_factory=SegmentConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
+    context: ContextConfig = field(default_factory=ContextConfig)
 
 
 def load_config(path: str | Path) -> Config:
@@ -50,9 +61,20 @@ def load_config(path: str | Path) -> Config:
         raw["data_dir"] = Path(raw["data_dir"])
     raw["segment"] = SegmentConfig(**raw.get("segment", {}))
     raw["analysis"] = AnalysisConfig(**raw.get("analysis", {}))
+    raw["context"] = ContextConfig(**raw.get("context", {}))
     cfg = Config(**raw)
     if cfg.position_mode not in {"rope", "raw"}:
         raise ValueError("position_mode must be rope or raw")
     if cfg.segment.min_tokens > cfg.segment.max_tokens:
         raise ValueError("segment.min_tokens must not exceed max_tokens")
+    if not cfg.context.cache_budgets or min(cfg.context.cache_budgets) < 2:
+        raise ValueError("context.cache_budgets must contain values >= 2")
+    if not cfg.context.sink_sizes or min(cfg.context.sink_sizes) < 0:
+        raise ValueError("context.sink_sizes must contain non-negative values")
+    if max(cfg.context.sink_sizes) >= min(cfg.context.cache_budgets):
+        raise ValueError("every sink size must be smaller than every cache budget")
+    if cfg.context.eval_tokens < 1:
+        raise ValueError("context.eval_tokens must be positive")
+    if cfg.context.eval_tokens >= min(cfg.context.cache_budgets) - max(cfg.context.sink_sizes):
+        raise ValueError("context.eval_tokens must fit in the smallest recent window")
     return cfg

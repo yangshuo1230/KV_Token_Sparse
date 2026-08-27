@@ -34,8 +34,6 @@ content words.
 The fraction with ΔCE > 0.1 is content/function 59.2%/50.7% at 128,
 35.6%/28.3% at 512, and 25.7%/19.6% at 2,048 tokens.
 
-Run with:
-
-```bash
-python -m kvstudy context-run-target-32k --config configs/token_context/qwen25_7b_32k.yaml
-```
+This suffix-only implementation has been superseded by the fixed-budget,
+sink-aware experiment in `kvstudy/token_context/experiment.py`. This report is
+retained only as historical baseline evidence.

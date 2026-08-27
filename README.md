@@ -27,13 +27,13 @@ the experimental treatment.
 
 - Configs: `configs/token_context/`
 - Results: `outputs/token_context/`
-- Main commands: `context-diagnose-2k`, `context-prepare-32k`,
-  `context-run-32k`, and `context-run-target-32k`
+- Main commands: `context-prepare`, `context-run`, and `context-summarize`
 
-The retained 32K reports predate the sink-aware experiment. They compare a full
-context with suffix-only inputs and are kept as baseline evidence, not as a
-deployable KV-cache policy. New cache-policy experiments must retain both the
-configured attention-sink prefix and the recent window.
+The reports named `LONG_CONTEXT_RESULTS.md` and `TARGET_TOKEN_RESULTS.md`
+predate the sink-aware experiment. They compare a full context with suffix-only
+inputs and are kept as baseline evidence, not as a deployable KV-cache policy.
+The current experiment compares recent-only with sink-plus-recent policies at
+the same total KV budget.
 
 ## Shared infrastructure
 
@@ -63,13 +63,16 @@ python -m kvstudy semantic-run --config configs/semantic/smoke.yaml
 python -m kvstudy semantic-summarize --config configs/semantic/smoke.yaml
 ```
 
-Run the existing target-token 32K baseline:
+Prepare and run the sink-aware 32K target-token experiment with four workers:
 
 ```bash
-python -m kvstudy context-prepare-32k \
+python -m kvstudy context-prepare \
   --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-run-target-32k \
-  --config configs/token_context/qwen25_7b_32k.yaml
+CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
+CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
+CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
+CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
+python -m kvstudy context-summarize --config configs/token_context/qwen25_7b_32k.yaml
 ```
 
 Use `python -m kvstudy --help` to list commands. Set `HF_HOME` to relocate
