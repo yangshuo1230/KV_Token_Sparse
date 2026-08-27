@@ -12,16 +12,17 @@ from scipy.special import softmax
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from .config import Config
-from .data import _pg19
-from .model import decoder_layers, load_model
-from .segments import _category, load_nlp
+from ..config import Config
+from ..data import _pg19
+from ..model import decoder_layers, load_model
+from ..segments import _category, load_nlp
 
 
 def prepare_long_contexts(cfg: Config) -> Path:
     """Cache only enough text to produce exactly max_length model tokens."""
-    cfg.output_dir.mkdir(parents=True, exist_ok=True)
-    output = cfg.output_dir / "contexts.jsonl"
+    data_dir = cfg.data_dir or cfg.output_dir
+    data_dir.mkdir(parents=True, exist_ok=True)
+    output = data_dir / "contexts.jsonl"
     tokenizer = AutoTokenizer.from_pretrained(cfg.model, use_fast=True)
     count = cfg.corpora.get("pg19", 0)
     with output.open("w", encoding="utf-8") as handle:
@@ -61,9 +62,10 @@ def _last_categories(text: str, offsets: list[tuple[int, int]], start: int, nlp)
 def run_long_context(cfg: Config, eval_tokens: int = 128,
                      windows: tuple[int, ...] = (128, 512, 2048),
                      target_token: bool = False) -> Path:
-    path = cfg.output_dir / "contexts.jsonl"
+    data_dir = cfg.data_dir or cfg.output_dir
+    path = data_dir / "contexts.jsonl"
     if not path.exists():
-        raise FileNotFoundError("run prepare-long-context first")
+        raise FileNotFoundError("run context-prepare-32k first")
     model, tokenizer = load_model(cfg.model, cfg.device, cfg.dtype)
     base, _ = decoder_layers(model)
     nlp = load_nlp()
@@ -116,6 +118,7 @@ def run_long_context(cfg: Config, eval_tokens: int = 128,
         del full_hidden
         torch.cuda.empty_cache()
     suffix = "target" if target_token else "post"
+    cfg.output_dir.mkdir(parents=True, exist_ok=True)
     output = cfg.output_dir / f"long_context_metrics_{suffix}.parquet"
     pd.DataFrame(rows).to_parquet(output, index=False)
     return output

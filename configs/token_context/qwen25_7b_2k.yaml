@@ -1,8 +1,7 @@
 seed: 17
 model: Qwen/Qwen2.5-7B
-data_dir: outputs/qwen25_7b
-output_dir: outputs/qwen25_7b_pilot_raw
-position_mode: raw
+data_dir: artifacts/qwen25_7b
+output_dir: outputs/token_context/qwen25_7b_2k
 dtype: bfloat16
 device: cuda:0
 max_length: 2048

@@ -1,4 +1,7 @@
 __pycache__/
 .pytest_cache/
 *.py[cod]
-
+artifacts/
+outputs/**/*.parquet
+outputs/**/*.jsonl
+outputs/**/idf.json

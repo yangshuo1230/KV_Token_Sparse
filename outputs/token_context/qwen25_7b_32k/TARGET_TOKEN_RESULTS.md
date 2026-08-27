@@ -37,6 +37,5 @@ The fraction with ΔCE > 0.1 is content/function 59.2%/50.7% at 128,
 Run with:
 
 ```bash
-python -m kvstudy run-target-long-context --config configs/qwen25_7b_32k.yaml
+python -m kvstudy context-run-target-32k --config configs/token_context/qwen25_7b_32k.yaml
 ```
-

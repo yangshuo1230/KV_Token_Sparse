@@ -44,6 +44,5 @@ absolute position, document length, corpus, and syntactic role.
 Run with:
 
 ```bash
-python -m kvstudy diagnose-context-length --config configs/qwen25_7b_pilot.yaml
+python -m kvstudy context-diagnose-2k --config configs/token_context/qwen25_7b_2k.yaml
 ```
-

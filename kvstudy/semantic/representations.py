@@ -13,10 +13,10 @@ import torch
 from torch.nn.functional import cosine_similarity
 from tqdm import tqdm
 
-from .config import Config
-from .data import read_contexts
-from .model import decoder_layers, hidden_states, load_model, projected_qk, selected_layers
-from .segments import CONTENT_POS, FUNCTION_POS, annotate, load_nlp
+from ..config import Config
+from ..data import read_contexts
+from ..model import decoder_layers, hidden_states, load_model, projected_qk, selected_layers
+from ..segments import CONTENT_POS, FUNCTION_POS, annotate, load_nlp
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,7 @@
 seed: 17
 model: Qwen/Qwen2.5-7B
-output_dir: outputs/qwen25_7b_32k
+data_dir: artifacts/qwen25_7b_32k
+output_dir: outputs/token_context/qwen25_7b_32k
 dtype: bfloat16
 device: cuda:0
 max_length: 32768
@@ -20,4 +21,3 @@ analysis:
   bootstrap_samples: 2000
   token_supplement: 2
   regions: [remote]
-

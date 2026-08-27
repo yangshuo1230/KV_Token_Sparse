@@ -74,8 +74,9 @@ def _clean(text: str) -> str:
 
 
 def prepare(cfg: Config) -> tuple[Path, Path]:
-    cfg.output_dir.mkdir(parents=True, exist_ok=True)
-    contexts_path = cfg.output_dir / "contexts.jsonl"
+    data_dir = cfg.data_dir or cfg.output_dir
+    data_dir.mkdir(parents=True, exist_ok=True)
+    contexts_path = data_dir / "contexts.jsonl"
     df: Counter[str] = Counter()
     written = 0
     with contexts_path.open("w", encoding="utf-8") as handle:
@@ -105,7 +106,7 @@ def prepare(cfg: Config) -> tuple[Path, Path]:
             if accepted < count:
                 raise RuntimeError(f"{corpus}: requested {count}, found {accepted}")
     idf = {word: float(__import__("math").log((written + 1) / (freq + 1)) + 1) for word, freq in df.items()}
-    idf_path = cfg.output_dir / "idf.json"
+    idf_path = data_dir / "idf.json"
     idf_path.write_text(json.dumps({"documents": written, "idf": idf}), encoding="utf-8")
     return contexts_path, idf_path
 

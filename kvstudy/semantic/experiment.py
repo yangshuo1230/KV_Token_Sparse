@@ -9,11 +9,11 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from .config import Config
-from .data import read_contexts
+from ..config import Config
+from ..data import read_contexts
 from .metrics import Accumulator, coverage, pair_metrics, top_indices
-from .model import decoder_layers, hidden_states, load_model, projected_qk, selected_layers
-from .segments import AnnotatedText, annotate, load_nlp
+from ..model import decoder_layers, hidden_states, load_model, projected_qk, selected_layers
+from ..segments import AnnotatedText, annotate, load_nlp
 
 
 def _token_distributions(q: torch.Tensor, k: torch.Tensor, query_indices: list[int],

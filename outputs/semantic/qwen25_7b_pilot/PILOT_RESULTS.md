@@ -2,8 +2,8 @@
 
 This is a 12-document engineering pilot (4 documents per corpus), not a test of
 the preregistered success criteria. It uses layers 0, 13, and 27 with 2,048-token
-contexts. The full configuration and all 1,000 prepared documents remain in
-`configs/qwen25_7b.yaml` and `outputs/qwen25_7b/`.
+contexts. The full configuration remains in `configs/semantic/qwen25_7b.yaml`;
+prepared documents are regenerable artifacts and are not versioned.
 
 Remote-KV macro means across the pilot strata:
 

@@ -11,10 +11,10 @@ import torch
 from scipy.special import softmax
 from tqdm import tqdm
 
-from .config import Config
-from .data import read_contexts
-from .model import decoder_layers, load_model
-from .segments import annotate, load_nlp
+from ..config import Config
+from ..data import read_contexts
+from ..model import decoder_layers, load_model
+from ..segments import annotate, load_nlp
 
 
 def _mask(length: int, query_indices: list[int], local_window: int,

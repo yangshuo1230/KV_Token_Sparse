@@ -39,7 +39,6 @@ for reliable ranking.
 Run with:
 
 ```bash
-python -m kvstudy prepare-long-context --config configs/qwen25_7b_32k.yaml
-python -m kvstudy run-long-context --config configs/qwen25_7b_32k.yaml
+python -m kvstudy context-prepare-32k --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy context-run-32k --config configs/token_context/qwen25_7b_32k.yaml
 ```
-

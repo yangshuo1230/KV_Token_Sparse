@@ -1,6 +1,6 @@
 import numpy as np
 
-from kvstudy.metrics import coverage, pair_metrics
+from kvstudy.semantic.metrics import coverage, pair_metrics
 
 
 def test_pair_metrics_identical():
