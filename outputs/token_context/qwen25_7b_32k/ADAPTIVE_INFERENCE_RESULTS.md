@@ -8,7 +8,7 @@ With 128-token pages, the ideal KV-read model predicts 3.39x for V1 and 10.69x f
 
 ## Implementation
 
-V1 keeps the full DynamicCache and chooses a zero-copy recent tensor view or the full KV for each query. V2 always runs recent attention, reads query-selected non-contiguous remote pages with FlashInfer's paged decode kernel, and merges the two softmax states using their log-sum-exp values. Page selection uses a first-layer query and one mean-key landmark per 128-token page. The page table is reusable for a block of decode steps.
+V1 keeps the full DynamicCache and chooses a zero-copy recent tensor view or the full KV for each query. V2 always runs recent attention, reads query-selected non-contiguous remote pages with FlashInfer's paged decode kernel, and merges the two softmax states using their log-sum-exp values. Page selection uses a first-layer query and one mean-key landmark per 128-token page. The page table is reusable for a block of decode steps. Both versions retain the complete physical KV cache so long routes remain possible; the optimization reduces KV reads, not stored bytes.
 
 ## Attention-kernel timing
 
@@ -22,14 +22,14 @@ The mixture uses the measured 24.80% long-token rate; page-selection cost is amo
 
 ## Real Qwen2.5-7B decode
 
-Each policy starts from an identical prefill cache and decodes 128 tokens. The routing schedules use the oracle *rate* only to measure compute; they do not use oracle labels and are not deployable quality results. Mean wall-clock latency is reported because the mixed distribution is bimodal.
+Each policy starts from an identical prefill cache and decodes 128 tokens in three order-rotated trials. The routing schedules use the oracle *rate* only to measure compute; they do not use oracle labels and are not deployable quality results. Mean wall-clock latency is reported because the mixed distribution is bimodal.
 
 | Context | Dense ms/token | V1 ms/token (speedup) | V2 ms/token (speedup) |
 |---:|---:|---:|---:|
-| 16,384 | 15.373 | 15.514 (0.991x) | 16.138 (0.953x) |
-| 24,576 | 16.999 | 16.118 (1.055x) | 16.971 (1.002x) |
+| 16,384 | 15.610 | 14.874 (1.050x) | 16.104 (0.971x) |
+| 24,576 | 17.134 | 15.445 (1.109x) | 16.732 (1.025x) |
 
-V1 produces a real end-to-end gain at 24K, but not at 16K. V2's two-kernel execution and LSE merge erase nearly all 24K gain and regress at 16K; a fused recent-plus-paged kernel is the next operator target.
+V1 gains at both measured lengths. V2's two-kernel execution and LSE merge cause a 16K regression and only a small 24K gain; a fused recent-plus-paged kernel is the next operator target.
 
 ## V2 quality at 32K
 

@@ -47,10 +47,10 @@ The adaptive inference prototype uses 128-token KV pages, a mandatory
 remote pages for V2. See
 `outputs/token_context/qwen25_7b_32k/ADAPTIVE_INFERENCE_RESULTS.md` for the
 profile, theoretical model, 16K/24K end-to-end benchmarks, 32K sparse-quality
-results, and explicit negative results. On the measured PPU, V1 reaches a
-1.055x mean end-to-end speedup at 24K but not 16K; V2 currently needs a fused
-recent-plus-paged kernel to turn its attention-level gain into a robust
-end-to-end gain.
+results, and explicit negative results. Across three order-rotated trials on
+the measured PPU, V1 reaches 1.050x/1.109x mean end-to-end speedup at 16K/24K.
+V2 regresses at 16K and reaches only 1.025x at 24K, motivating a fused
+recent-plus-paged kernel.
 
 ## Shared infrastructure
 
@@ -105,11 +105,15 @@ python -m kvstudy context-summarize-sparse --config configs/token_context/qwen25
 python -m kvstudy context-benchmark-attention --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 32768
 python -m kvstudy context-benchmark-inference --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 --decode-tokens 128
 python -m kvstudy context-report-engineering --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy context-explore-router --config configs/token_context/qwen25_7b_32k.yaml
 ```
 
 FlashInfer is required only for the optimized decode commands; the profiling
 and quality-analysis commands remain ordinary PyTorch/Transformers code. Install
 the kernel dependencies with `python -m pip install -r requirements-kernels.txt`.
+The router exploration emits a deployable FP16 vocabulary LUT, a three-feature
+speculative verifier, and an out-of-document accuracy/cost report in
+`ROUTER_EXPLORATION_RESULTS.md`.
 
 Evaluate the causal lightweight router and exercise real `DynamicCache`
 pruning:

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+import numpy as np
 
 from ..config import Config
 from ..model import load_model
@@ -24,10 +25,11 @@ def benchmark_v1_inference(
     cfg: Config,
     context_lengths: list[int],
     decode_tokens: int = 64,
+    trials: int = 3,
 ) -> Path:
     """Measure real Qwen decode with full, recent, and oracle-rate mixed routes."""
-    if decode_tokens < 8:
-        raise ValueError("decode_tokens must be at least 8")
+    if decode_tokens < 8 or trials < 1:
+        raise ValueError("decode_tokens must be at least 8 and trials must be positive")
     context_path = (cfg.data_dir or cfg.output_dir) / "contexts.jsonl"
     if not context_path.exists():
         raise FileNotFoundError("run context-prepare first")
@@ -64,84 +66,102 @@ def benchmark_v1_inference(
             cfg.context.sparse_remote_budget,
             cfg.device,
         )
-        policies = ("dense", "recent", "v1_oracle_rate_schedule", "v2_oracle_rate_schedule")
-        for policy in policies:
-            cache = clone_dynamic_cache(initial_cache)
-            token = initial_token.clone()
-            position = length
-            controller.reset_page_table()
-            latencies = []
-            long_routes = 0
-            for step in range(decode_tokens):
-                if policy == "dense":
-                    use_long = True
-                elif policy == "recent":
-                    use_long = False
-                elif "oracle_rate" in policy:
-                    # Deterministic low-discrepancy schedule at the empirical
-                    # oracle rate. This measures compute only, not deployable
-                    # router quality, which is reported separately.
-                    use_long = ((step * 37) % decode_tokens) < round(
-                        long_fraction * decode_tokens
+        lut_path = cfg.output_dir / "embedding_type_lut.npy"
+        lut_meta_path = cfg.output_dir / "embedding_type_lut_meta.json"
+        type_lut = np.load(lut_path) if lut_path.exists() else None
+        type_threshold = None
+        if type_lut is not None and lut_meta_path.exists():
+            type_threshold = json.loads(lut_meta_path.read_text(encoding="utf-8"))[
+                "thresholds"
+            ]["0.25"]
+        policies = ["dense", "recent"]
+        if type_lut is not None and type_threshold is not None:
+            policies.append("embedding_type_lut")
+        policies += ["v1_oracle_rate_schedule", "v2_oracle_rate_schedule"]
+        for trial in range(trials):
+            offset = trial % len(policies)
+            ordered_policies = policies[offset:] + policies[:offset]
+            for policy in ordered_policies:
+                cache = clone_dynamic_cache(initial_cache)
+                token = initial_token.clone()
+                position = length
+                controller.reset_page_table()
+                latencies = []
+                long_routes = 0
+                for step in range(decode_tokens):
+                    if policy == "dense":
+                        use_long = True
+                    elif policy == "recent":
+                        use_long = False
+                    elif policy == "embedding_type_lut":
+                        use_long = bool(type_lut[int(token.item())] >= type_threshold)
+                    elif "oracle_rate" in policy:
+                        # Deterministic low-discrepancy schedule at the empirical
+                        # oracle rate. This measures compute only, not deployable
+                        # router quality, which is reported separately.
+                        use_long = ((step * 37) % decode_tokens) < round(
+                            long_fraction * decode_tokens
+                        )
+                    long_routes += int(use_long)
+                    if policy.startswith("v2"):
+                        if step and step % cfg.context.sparse_selection_refresh == 0:
+                            controller.reset_page_table()
+                        configure_v2_route(model, controller, use_long)
+                    else:
+                        configure_v1_route(model, cfg.context.profile_recent_budget, use_long)
+                    pos = torch.tensor([[position]], device=cfg.device)
+                    cache_pos = torch.tensor([position], device=cfg.device)
+                    torch.cuda.synchronize()
+                    start = time.perf_counter()
+                    output = model(
+                        input_ids=token,
+                        position_ids=pos,
+                        cache_position=cache_pos,
+                        past_key_values=cache,
+                        use_cache=True,
+                        return_dict=True,
                     )
-                long_routes += int(use_long)
-                if policy.startswith("v2"):
-                    if step and step % cfg.context.sparse_selection_refresh == 0:
-                        controller.reset_page_table()
-                    configure_v2_route(model, controller, use_long)
-                else:
-                    configure_v1_route(model, cfg.context.profile_recent_budget, use_long)
-                pos = torch.tensor([[position]], device=cfg.device)
-                cache_pos = torch.tensor([position], device=cfg.device)
-                torch.cuda.synchronize()
-                start = time.perf_counter()
-                output = model(
-                    input_ids=token,
-                    position_ids=pos,
-                    cache_position=cache_pos,
-                    past_key_values=cache,
-                    use_cache=True,
-                    return_dict=True,
-                )
-                torch.cuda.synchronize()
-                latencies.append(1000 * (time.perf_counter() - start))
-                cache = output.past_key_values
-                token = output.logits[:, -1:].argmax(dim=-1)
-                position += 1
-            measured = latencies[4:]
-            rows.append({
-                "model": cfg.model,
-                "device": torch.cuda.get_device_name(torch.device(cfg.device)),
-                "dtype": cfg.dtype,
-                "context_length": length,
-                "policy": policy,
-                "recent_budget": cfg.context.profile_recent_budget,
-                "profile_long_fraction": long_fraction,
-                "actual_long_fraction": long_routes / decode_tokens,
-                "decode_latency_ms_median": float(pd.Series(measured).median()),
-                "decode_latency_ms_mean": float(pd.Series(measured).mean()),
-                "decode_tokens": decode_tokens,
-                "warmup_tokens_excluded": 4,
-            })
-            del cache
+                    torch.cuda.synchronize()
+                    latencies.append(1000 * (time.perf_counter() - start))
+                    cache = output.past_key_values
+                    token = output.logits[:, -1:].argmax(dim=-1)
+                    position += 1
+                measured = latencies[4:]
+                rows.append({
+                    "model": cfg.model,
+                    "device": torch.cuda.get_device_name(torch.device(cfg.device)),
+                    "dtype": cfg.dtype,
+                    "context_length": length,
+                    "trial": trial,
+                    "policy": policy,
+                    "recent_budget": cfg.context.profile_recent_budget,
+                    "profile_long_fraction": long_fraction,
+                    "actual_long_fraction": long_routes / decode_tokens,
+                    "decode_latency_ms_median": float(pd.Series(measured).median()),
+                    "decode_latency_ms_mean": float(pd.Series(measured).mean()),
+                    "decode_tokens": decode_tokens,
+                    "warmup_tokens_excluded": 4,
+                })
+                del cache
         del initial_cache, prefill, encoded
         torch.cuda.empty_cache()
 
     result = pd.DataFrame(rows)
-    dense = result[result.policy.eq("dense")].set_index("context_length")[
+    dense = result[result.policy.eq("dense")].set_index(["context_length", "trial"])[
         "decode_latency_ms_median"
     ]
     result["median_speedup_vs_dense"] = result.apply(
-        lambda row: dense.loc[row.context_length] / row.decode_latency_ms_median,
+        lambda row: dense.loc[(row.context_length, row.trial)] / row.decode_latency_ms_median,
         axis=1,
     )
-    dense_mean = result[result.policy.eq("dense")].set_index("context_length")[
+    dense_mean = result[result.policy.eq("dense")].set_index(["context_length", "trial"])[
         "decode_latency_ms_mean"
     ]
     result["mean_speedup_vs_dense"] = result.apply(
-        lambda row: dense_mean.loc[row.context_length] / row.decode_latency_ms_mean,
+        lambda row: dense_mean.loc[(row.context_length, row.trial)] / row.decode_latency_ms_mean,
         axis=1,
     )
+    result["throughput_tokens_per_second"] = 1000 / result.decode_latency_ms_mean
     output = cfg.output_dir / "end_to_end_benchmark.csv"
     result.to_csv(output, index=False)
     return output

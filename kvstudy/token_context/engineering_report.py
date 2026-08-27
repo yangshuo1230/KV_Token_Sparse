@@ -30,7 +30,7 @@ def write_engineering_report(cfg: Config) -> Path:
         )
     e2e_lines = []
     for length in sorted(inference.context_length.unique()):
-        group = inference[inference.context_length.eq(length)].set_index("policy")
+        group = inference[inference.context_length.eq(length)].groupby("policy").mean(numeric_only=True)
         e2e_lines.append(
             f"| {length:,} | {group.loc['dense'].decode_latency_ms_mean:.3f} | "
             f"{group.loc['v1_oracle_rate_schedule'].decode_latency_ms_mean:.3f} "
@@ -75,22 +75,24 @@ def write_engineering_report(cfg: Config) -> Path:
         "non-contiguous remote pages with FlashInfer's paged decode kernel, and merges the "
         "two softmax states using their log-sum-exp values. Page selection uses a first-layer "
         "query and one mean-key landmark per 128-token page. The page table is reusable for "
-        "a block of decode steps.\n\n"
+        "a block of decode steps. Both versions retain the complete physical KV cache so "
+        "long routes remain possible; the optimization reduces KV reads, not stored bytes.\n\n"
         "## Attention-kernel timing\n\n"
         "The mixture uses the measured 24.80% long-token rate; page-selection cost is "
         f"amortized over {cfg.context.sparse_selection_refresh} tokens.\n\n"
         "| Context | V1 mixture | V2 mixture |\n|---:|---:|---:|\n"
         + "\n".join(kernel_lines)
         + "\n\n## Real Qwen2.5-7B decode\n\n"
-        "Each policy starts from an identical prefill cache and decodes 128 tokens. The "
+        "Each policy starts from an identical prefill cache and decodes 128 tokens in "
+        "three order-rotated trials. The "
         "routing schedules use the oracle *rate* only to measure compute; they do not use "
         "oracle labels and are not deployable quality results. Mean wall-clock latency is "
         "reported because the mixed distribution is bimodal.\n\n"
         "| Context | Dense ms/token | V1 ms/token (speedup) | V2 ms/token (speedup) |\n"
         "|---:|---:|---:|---:|\n"
         + "\n".join(e2e_lines)
-        + "\n\nV1 produces a real end-to-end gain at 24K, but not at 16K. V2's two-kernel "
-        "execution and LSE merge erase nearly all 24K gain and regress at 16K; a fused "
+        + "\n\nV1 gains at both measured lengths. V2's two-kernel "
+        "execution and LSE merge cause a 16K regression and only a small 24K gain; a fused "
         "recent-plus-paged kernel is the next operator target.\n\n"
         "## V2 quality at 32K\n\n"
         f"The sparse policy attends 6,144 tokens (2,048 recent + 4,096 remote). Its mean "

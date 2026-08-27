@@ -11,6 +11,7 @@ from kvstudy.token_context.kv_cache import cache_token_count, prune_legacy_cache
 from kvstudy.token_context.profile import theoretical_attention_cost
 from kvstudy.token_context.report import summarize_context
 from kvstudy.token_context.router import cross_validated_type_scores
+from kvstudy.token_context.router_exploration import _document_folds
 
 
 def _token(text: str, pos: str, dep: str = "", punct: bool = False, number: bool = False):
@@ -130,3 +131,9 @@ def test_sparse_page_selection_always_includes_sink_and_recent():
     recent = recent_page_indices(8 * 128, 2 * 128, 128)
     selected = select_sparse_pages(query, landmarks, recent, remote_pages=2, sink_pages=1)
     assert selected.tolist() == [0, 3, 4, 6, 7]
+
+
+def test_router_exploration_folds_whole_documents():
+    frame = pd.DataFrame({"document": ["b", "a", "b", "c", "a", "d"]})
+    folds = _document_folds(frame)
+    assert folds.tolist() == [1, 0, 1, 2, 0, 3]
