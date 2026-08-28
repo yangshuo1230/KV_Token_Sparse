@@ -12,6 +12,7 @@ from kvstudy.token_context.profile import theoretical_attention_cost
 from kvstudy.token_context.report import summarize_context
 from kvstudy.token_context.router import cross_validated_type_scores
 from kvstudy.token_context.router_exploration import _document_folds
+from kvstudy.token_context.sink_cached_experiment import fixed_remote_indices
 
 
 def _token(text: str, pos: str, dep: str = "", punct: bool = False, number: bool = False):
@@ -137,3 +138,12 @@ def test_router_exploration_folds_whole_documents():
     frame = pd.DataFrame({"document": ["b", "a", "b", "c", "a", "d"]})
     folds = _document_folds(frame)
     assert folds.tolist() == [1, 0, 1, 2, 0, 3]
+
+
+def test_sink_controls_exclude_prefix_and_are_deterministic():
+    random_a = fixed_remote_indices("random_remote", 8, 1000, 17, "cpu")
+    random_b = fixed_remote_indices("random_remote", 8, 1000, 17, "cpu")
+    strided = fixed_remote_indices("strided_remote", 8, 1000, 17, "cpu")
+    assert torch.equal(random_a, random_b)
+    assert random_a.min() >= 128 and strided.min() >= 128
+    assert len(random_a.unique()) == len(strided.unique()) == 8

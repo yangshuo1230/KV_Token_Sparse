@@ -92,7 +92,7 @@ def write_engineering_report(cfg: Config) -> Path:
         "|---:|---:|---:|---:|\n"
         + "\n".join(e2e_lines)
         + "\n\nV1 gains at both measured lengths. V2's two-kernel "
-        "execution and LSE merge cause a 16K regression and only a small 24K gain; a fused "
+        "execution and LSE merge are near break-even at 16K and give only a small 24K gain; a fused "
         "recent-plus-paged kernel is the next operator target.\n\n"
         "## V2 quality at 32K\n\n"
         f"The sparse policy attends 6,144 tokens (2,048 recent + 4,096 remote). Its mean "

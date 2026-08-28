@@ -14,11 +14,15 @@ from .token_context.experiment import prepare_contexts, run_context_ablation
 from .token_context.inference_benchmark import benchmark_v1_inference
 from .token_context.engineering_report import write_engineering_report
 from .token_context.profile import profile_context_need
+from .token_context.predictor_mechanisms import compare_predictor_mechanisms
 from .token_context.report import summarize_context
 from .token_context.router import evaluate_router
 from .token_context.router_exploration import explore_lightweight_routers
 from .token_context.sparse_experiment import run_sparse_context_ablation
 from .token_context.sparse_report import summarize_sparse_context
+from .token_context.sink_cached_experiment import run_cached_sink_experiment
+from .token_context.sink_report import summarize_attention_sink
+from .token_context.sink_predictor_summary import write_sink_predictor_summary
 
 
 COMMANDS = (
@@ -40,6 +44,10 @@ COMMANDS = (
     "context-summarize-sparse",
     "context-report-engineering",
     "context-explore-router",
+    "context-run-cached-sink",
+    "context-summarize-sink",
+    "context-compare-predictors",
+    "context-report-sink-predictors",
 )
 
 
@@ -64,6 +72,13 @@ def main() -> None:
             command.add_argument("--decode-tokens", type=int, default=64)
             command.add_argument("--trials", type=int, default=3)
         if name in {"semantic-run", "context-run", "context-run-sparse"}:
+            command.add_argument("--shard-index", type=int, default=0)
+            command.add_argument("--num-shards", type=int, default=1)
+        if name == "context-run-cached-sink":
+            command.add_argument("--context-lengths", type=int, nargs="+", default=[16384, 24576, 32768])
+            command.add_argument("--documents", type=int, default=8)
+            command.add_argument("--eval-tokens", type=int, default=64)
+            command.add_argument("--budgets", type=int, nargs="+", default=[128, 512, 2048, 8192])
             command.add_argument("--shard-index", type=int, default=0)
             command.add_argument("--num-shards", type=int, default=1)
     args = parser.parse_args()
@@ -102,6 +117,22 @@ def main() -> None:
         print(write_engineering_report(cfg))
     elif args.command == "context-explore-router":
         print(*explore_lightweight_routers(cfg), sep="\n")
+    elif args.command == "context-run-cached-sink":
+        print(run_cached_sink_experiment(
+            cfg,
+            args.context_lengths,
+            args.documents,
+            args.eval_tokens,
+            args.budgets,
+            args.shard_index,
+            args.num_shards,
+        ))
+    elif args.command == "context-summarize-sink":
+        print(*summarize_attention_sink(cfg), sep="\n")
+    elif args.command == "context-compare-predictors":
+        print(*compare_predictor_mechanisms(cfg), sep="\n")
+    elif args.command == "context-report-sink-predictors":
+        print(write_sink_predictor_summary(cfg))
 
 
 if __name__ == "__main__":

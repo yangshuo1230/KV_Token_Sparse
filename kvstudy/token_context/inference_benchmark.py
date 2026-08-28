@@ -11,7 +11,9 @@ import numpy as np
 from ..config import Config
 from ..model import load_model
 from .routed_inference import (
+    FixedRemoteDecodeController,
     SparseDecodeController,
+    configure_fixed_remote_route,
     configure_v1_route,
     configure_v2_route,
     enable_routed_decode,
@@ -66,6 +68,15 @@ def benchmark_v1_inference(
             cfg.context.sparse_remote_budget,
             cfg.device,
         )
+        sink1_controller = FixedRemoteDecodeController(
+            torch.tensor([0], device=cfg.device),
+            cfg.context.profile_recent_budget - 1,
+        )
+        sink1_copy_controller = FixedRemoteDecodeController(
+            torch.tensor([0], device=cfg.device),
+            cfg.context.profile_recent_budget - 1,
+            concatenate_segments=True,
+        )
         lut_path = cfg.output_dir / "embedding_type_lut.npy"
         lut_meta_path = cfg.output_dir / "embedding_type_lut_meta.json"
         type_lut = np.load(lut_path) if lut_path.exists() else None
@@ -74,7 +85,7 @@ def benchmark_v1_inference(
             type_threshold = json.loads(lut_meta_path.read_text(encoding="utf-8"))[
                 "thresholds"
             ]["0.25"]
-        policies = ["dense", "recent"]
+        policies = ["dense", "recent", "sink1_recent", "sink1_copy_fused"]
         if type_lut is not None and type_threshold is not None:
             policies.append("embedding_type_lut")
         policies += ["v1_oracle_rate_schedule", "v2_oracle_rate_schedule"]
@@ -93,6 +104,8 @@ def benchmark_v1_inference(
                         use_long = True
                     elif policy == "recent":
                         use_long = False
+                    elif policy in {"sink1_recent", "sink1_copy_fused"}:
+                        use_long = False
                     elif policy == "embedding_type_lut":
                         use_long = bool(type_lut[int(token.item())] >= type_threshold)
                     elif "oracle_rate" in policy:
@@ -103,7 +116,11 @@ def benchmark_v1_inference(
                             long_fraction * decode_tokens
                         )
                     long_routes += int(use_long)
-                    if policy.startswith("v2"):
+                    if policy == "sink1_recent":
+                        configure_fixed_remote_route(model, sink1_controller)
+                    elif policy == "sink1_copy_fused":
+                        configure_fixed_remote_route(model, sink1_copy_controller)
+                    elif policy.startswith("v2"):
                         if step and step % cfg.context.sparse_selection_refresh == 0:
                             controller.reset_page_table()
                         configure_v2_route(model, controller, use_long)

@@ -8,7 +8,7 @@ A linear head over the current input-token embedding predicts whether the next t
 
 ## Speculative confidence verifier
 
-A three-feature logistic head over recent-only probability, top-2 margin, and entropy predicts whether full context changes top-1 with ROC AUC 0.833. Routing 40% to full recalls 87.2% of top-1 changes and leaves a 1.66% residual change rate. But the signal exists only after recent-only inference. Replaying the full model for rejected tokens gives an estimated 24K speedup of 0.772x, i.e. a slowdown.
+A three-feature logistic head over recent-only probability, top-2 margin, and entropy predicts whether full context changes top-1 with ROC AUC 0.833. Routing 40% to full recalls 87.2% of top-1 changes and leaves a 1.66% residual change rate. But the signal exists only after recent-only inference. Replaying the full model for rejected tokens gives an estimated 24K speedup of 0.760x, i.e. a slowdown.
 
 ## Decision
 

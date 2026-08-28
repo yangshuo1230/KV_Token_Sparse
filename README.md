@@ -29,7 +29,8 @@ the experimental treatment.
 - Results: `outputs/token_context/`
 - Main commands: `context-prepare`, `context-run`, `context-summarize`,
   `context-profile-need`, `context-run-sparse`, `context-benchmark-attention`,
-  `context-benchmark-inference`, and `context-report-engineering`
+  `context-benchmark-inference`, `context-run-cached-sink`,
+  `context-compare-predictors`, and `context-report-sink-predictors`
 
 The reports named `LONG_CONTEXT_RESULTS.md` and `TARGET_TOKEN_RESULTS.md`
 predate the sink-aware experiment. They compare a full context with suffix-only
@@ -48,9 +49,18 @@ remote pages for V2. See
 `outputs/token_context/qwen25_7b_32k/ADAPTIVE_INFERENCE_RESULTS.md` for the
 profile, theoretical model, 16K/24K end-to-end benchmarks, 32K sparse-quality
 results, and explicit negative results. Across three order-rotated trials on
-the measured PPU, V1 reaches 1.050x/1.109x mean end-to-end speedup at 16K/24K.
-V2 regresses at 16K and reaches only 1.025x at 24K, motivating a fused
+the measured PPU, V1 reaches 1.050x/1.064x mean end-to-end speedup at 16K/24K.
+V2 is near break-even at 16K and reaches only 1.038x at 24K, motivating a fused
 recent-plus-paged kernel.
+
+The cached-decode follow-up changes the sink conclusion materially. After a
+dense prefill, retaining only the first KV token plus the recent window reduces
+32K/2,048-budget ΔCE from 0.6495 to 0.0178. The effect beats equal random and
+strided remote controls and disappears when prefix values are zeroed. See
+`outputs/token_context/qwen25_7b_32k/SINK_AND_PREDICTOR_SUMMARY.md`. Current
+two-kernel and copy-then-kernel implementations are too slow, so the next
+operator target is a fused one-token-sink + recent + optional sparse-remote
+online-softmax kernel.
 
 ## Shared infrastructure
 
@@ -106,6 +116,19 @@ python -m kvstudy context-benchmark-attention --config configs/token_context/qwe
 python -m kvstudy context-benchmark-inference --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 --decode-tokens 128
 python -m kvstudy context-report-engineering --config configs/token_context/qwen25_7b_32k.yaml
 python -m kvstudy context-explore-router --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+Run the real cached-decode sink experiment with four GPUs, then compare all
+predictor mechanisms on the corrected sink-aware baseline:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
+CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
+CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
+CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
+python -m kvstudy context-summarize-sink --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy context-compare-predictors --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy context-report-sink-predictors --config configs/token_context/qwen25_7b_32k.yaml
 ```
 
 FlashInfer is required only for the optimized decode commands; the profiling

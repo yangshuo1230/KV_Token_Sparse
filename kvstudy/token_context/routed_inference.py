@@ -119,6 +119,88 @@ class SparseDecodeController:
         ).to(query.dtype)
 
 
+class FixedRemoteDecodeController:
+    """Attend fixed remote token indices plus a mandatory recent window."""
+
+    def __init__(
+        self,
+        remote_indices: torch.Tensor,
+        recent_tokens: int,
+        zero_remote_values: bool = False,
+        concatenate_segments: bool = False,
+    ) -> None:
+        if recent_tokens < 1:
+            raise ValueError("recent_tokens must be positive")
+        self.remote_indices = remote_indices.to(dtype=torch.long)
+        self.recent_tokens = recent_tokens
+        self.zero_remote_values = zero_remote_values
+        self.concatenate_segments = concatenate_segments
+        self.page_indices = self.remote_indices  # compatible reset/route sentinel
+
+    def reset_page_table(self) -> None:
+        return None
+
+    def attend(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        scaling: float,
+        select_pages: bool = False,
+    ) -> torch.Tensor:
+        import flashinfer
+
+        recent = min(self.recent_tokens, key.shape[-2])
+        recent_key = key[0, :, -recent:, :].transpose(0, 1)
+        recent_value = value[0, :, -recent:, :].transpose(0, 1)
+        indices = self.remote_indices[self.remote_indices < key.shape[-2] - recent]
+        if indices.numel():
+            remote_key = key[0].index_select(1, indices).transpose(0, 1)
+            remote_value = value[0].index_select(1, indices).transpose(0, 1)
+            if self.zero_remote_values:
+                remote_value = torch.zeros_like(remote_value)
+        if self.concatenate_segments and indices.numel():
+            combined_key = torch.cat(
+                (remote_key, recent_key), dim=0
+            )
+            combined_value = torch.cat(
+                (remote_value, recent_value), dim=0
+            )
+            return flashinfer.single_decode_with_kv_cache(
+                query,
+                combined_key,
+                combined_value,
+                kv_layout="NHD",
+                use_tensor_cores=True,
+                sm_scale=scaling,
+            )
+        recent_output, recent_lse = flashinfer.single_decode_with_kv_cache(
+            query,
+            recent_key,
+            recent_value,
+            kv_layout="NHD",
+            use_tensor_cores=True,
+            sm_scale=scaling,
+            return_lse=True,
+        )
+        if not indices.numel():
+            return recent_output
+        remote_output, remote_lse = flashinfer.single_decode_with_kv_cache(
+            query,
+            remote_key,
+            remote_value,
+            kv_layout="NHD",
+            use_tensor_cores=True,
+            sm_scale=scaling,
+            return_lse=True,
+        )
+        combined_lse = torch.logaddexp(recent_lse, remote_lse)
+        return (
+            recent_output.float() * torch.exp(recent_lse - combined_lse)[:, None]
+            + remote_output.float() * torch.exp(remote_lse - combined_lse)[:, None]
+        ).to(query.dtype)
+
+
 def routed_flashinfer_attention(
     module,
     query: torch.Tensor,
@@ -138,6 +220,9 @@ def routed_flashinfer_attention(
 
     budget = int(getattr(module, "_kv_recent_budget", key.shape[-2]))
     use_long = bool(getattr(module, "_kv_route_long", True))
+    recorder = getattr(module, "_kv_mass_recorder", None)
+    if recorder is not None:
+        recorder(module, query, key, value, scaling)
     controller = getattr(module, "_kv_sparse_controller", None)
     if use_long and controller is not None:
         output = controller.attend(
@@ -192,6 +277,15 @@ def configure_v2_route(
     for layer in base.layers:
         layer.self_attn._kv_recent_budget = controller.recent_tokens
         layer.self_attn._kv_route_long = use_long_context
+        layer.self_attn._kv_sparse_controller = controller
+
+
+def configure_fixed_remote_route(model, controller: FixedRemoteDecodeController) -> None:
+    """Configure every layer to attend fixed remote indices and recent KV."""
+    base = getattr(model, "model", model)
+    for layer in base.layers:
+        layer.self_attn._kv_recent_budget = controller.recent_tokens
+        layer.self_attn._kv_route_long = True
         layer.self_attn._kv_sparse_controller = controller
 
 

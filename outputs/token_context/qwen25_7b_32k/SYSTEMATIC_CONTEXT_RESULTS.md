@@ -1,5 +1,11 @@
 # Sink-aware target-token context requirements
 
+> This compact-recomputation study is not the final evidence for streaming
+> sink utility. The later real cached-decode experiment finds a large benefit
+> from retaining prefix-1 because recent cached K/V already encode the dense
+> prefill history. See `ATTENTION_SINK_RESULTS.md` and
+> `SINK_AND_PREDICTOR_SUMMARY.md`.
+
 ## Design
 
 This experiment evaluates Qwen2.5-7B on 16 PG-19 documents of exactly 32,768

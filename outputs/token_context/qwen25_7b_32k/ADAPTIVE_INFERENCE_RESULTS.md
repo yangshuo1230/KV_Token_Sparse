@@ -26,10 +26,10 @@ Each policy starts from an identical prefill cache and decodes 128 tokens in thr
 
 | Context | Dense ms/token | V1 ms/token (speedup) | V2 ms/token (speedup) |
 |---:|---:|---:|---:|
-| 16,384 | 15.610 | 14.874 (1.050x) | 16.104 (0.971x) |
-| 24,576 | 17.134 | 15.445 (1.109x) | 16.732 (1.025x) |
+| 16,384 | 15.726 | 14.985 (1.050x) | 15.674 (1.003x) |
+| 24,576 | 16.928 | 15.906 (1.064x) | 16.321 (1.038x) |
 
-V1 gains at both measured lengths. V2's two-kernel execution and LSE merge cause a 16K regression and only a small 24K gain; a fused recent-plus-paged kernel is the next operator target.
+V1 gains at both measured lengths. V2's two-kernel execution and LSE merge are near break-even at 16K and give only a small 24K gain; a fused recent-plus-paged kernel is the next operator target.
 
 ## V2 quality at 32K
 
