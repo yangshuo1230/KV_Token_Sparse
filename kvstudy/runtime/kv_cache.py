@@ -4,7 +4,16 @@ from collections.abc import Sequence
 
 import torch
 
-from .experiment import retained_indices
+
+def retained_indices(length: int, cache_budget: int, sink_size: int) -> list[int]:
+    """Return fixed-budget prefix-sink plus recent indices in causal order."""
+    if length < cache_budget:
+        raise ValueError("cache budget cannot exceed sequence length")
+    if not 0 <= sink_size < cache_budget:
+        raise ValueError("sink size must be in [0, cache_budget)")
+    recent_size = cache_budget - sink_size
+    recent_start = length - recent_size
+    return list(range(min(sink_size, recent_start))) + list(range(recent_start, length))
 
 
 LegacyCache = Sequence[tuple[torch.Tensor, ...]]

@@ -11,13 +11,9 @@ from tqdm import tqdm
 from ..config import Config
 from ..model import load_model
 from .experiment import _distribution_metrics
-from .kv_cache import clone_dynamic_cache
-from .routed_inference import (
-    FixedRemoteDecodeController,
-    configure_fixed_remote_route,
-    configure_v1_route,
-    enable_routed_decode,
-)
+from ..runtime.kv_cache import clone_dynamic_cache
+from ..backends import DenseBackend, FixedRemoteBackend, RecentBackend
+from ..runtime.engine import DecodeEngine
 from .sink_mass import AttentionSinkMassRecorder
 
 
@@ -57,34 +53,6 @@ def _stable_seed(document: str, context_length: int, count: int, seed: int) -> i
 
 
 @torch.inference_mode()
-def _decode_teacher_forced(
-    model,
-    cache,
-    query_ids: torch.Tensor,
-    start_position: int,
-    recorder: AttentionSinkMassRecorder | None = None,
-) -> torch.Tensor:
-    logits = []
-    for offset in range(query_ids.shape[1]):
-        if recorder is not None:
-            recorder.decode_step = offset
-        position = start_position + offset
-        pos = torch.tensor([[position]], device=query_ids.device)
-        cache_pos = torch.tensor([position], device=query_ids.device)
-        output = model(
-            input_ids=query_ids[:, offset : offset + 1],
-            position_ids=pos,
-            cache_position=cache_pos,
-            past_key_values=cache,
-            use_cache=True,
-            return_dict=True,
-        )
-        cache = output.past_key_values
-        logits.append(output.logits[:, -1])
-    return torch.cat(logits, dim=0)
-
-
-@torch.inference_mode()
 def run_cached_sink_experiment(
     cfg: Config,
     context_lengths: list[int],
@@ -105,6 +73,7 @@ def run_cached_sink_experiment(
     records = [json.loads(line) for line in path.open(encoding="utf-8")][:documents]
     records = records[shard_index::num_shards]
     model, tokenizer = load_model(cfg.model, cfg.device, cfg.dtype)
+    engine = DecodeEngine(model)
     rows: list[dict] = []
     mass_rows: list[dict] = []
 
@@ -131,10 +100,7 @@ def run_cached_sink_experiment(
             original_cache = prefill.past_key_values
             queries = ids[:, prefill_length : context_length - 1]
             targets = ids[0, target_start:context_length]
-            enable_routed_decode(model)
-
             dense_cache = clone_dynamic_cache(original_cache)
-            configure_v1_route(model, recent_budget=max(budgets), use_long_context=True)
             recorder = AttentionSinkMassRecorder(
                 layers=[0, 1, 2, 4, 8, 12, 16, 20, 24, 27],
                 prefix_sizes=[1, 4, 16, 64, 128],
@@ -143,8 +109,12 @@ def run_cached_sink_experiment(
             )
             for layer in model.model.layers:
                 layer.self_attn._kv_mass_recorder = recorder
-            full_logits = _decode_teacher_forced(
-                model, dense_cache, queries, prefill_length, recorder
+            full_logits = engine.decode(
+                dense_cache,
+                queries,
+                prefill_length,
+                DenseBackend(),
+                on_step=lambda step: setattr(recorder, "decode_step", step),
             )
             mass_rows.extend(recorder.rows)
             for layer in model.model.layers:
@@ -167,7 +137,7 @@ def run_cached_sink_experiment(
                         continue
                     cache = clone_dynamic_cache(original_cache)
                     if policy == "recent_only":
-                        configure_v1_route(model, recent_budget=budget, use_long_context=False)
+                        backend = RecentBackend(recent_tokens=budget)
                     else:
                         recent_tokens = budget - remote_count
                         remote_end = prefill_length - recent_tokens
@@ -178,14 +148,13 @@ def run_cached_sink_experiment(
                             _stable_seed(record["id"], context_length, remote_count, cfg.seed),
                             cfg.device,
                         )
-                        controller = FixedRemoteDecodeController(
-                            indices,
-                            recent_tokens,
+                        backend = FixedRemoteBackend(
+                            remote_indices=indices,
+                            recent_tokens=recent_tokens,
                             zero_remote_values=policy == "prefix_zero_value",
                         )
-                        configure_fixed_remote_route(model, controller)
-                    compact_logits = _decode_teacher_forced(
-                        model, cache, queries, prefill_length
+                    compact_logits = engine.decode(
+                        cache, queries, prefill_length, backend
                     )
                     metrics = _distribution_metrics(full_logits, compact_logits, targets)
                     for offset in range(eval_tokens):

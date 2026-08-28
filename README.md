@@ -1,97 +1,116 @@
-# KV Routing and Token Context Studies
+# Adaptive KV Routing Study
 
-This repository contains two related but independent research tracks for causal
-language models. They share data loading, token annotation, and model adapters,
-but have separate code, configurations, and results.
+This repository studies token-dependent KV budgets for long-context causal
+language models. The current reference model is Qwen2.5-7B on 16K–32K PG-19
+contexts.
 
-## Research tracks
-
-### 1. Semantic-segment KV routing
-
-`kvstudy/semantic/` tests whether tokens in a semantic segment can share a
-remote KV-block route without losing much attention mass. It compares semantic
-segments with length-matched and random controls, and includes hidden-state,
-repeated-word, evidence-retrieval, and raw-QK diagnostics.
-
-- Configs: `configs/semantic/`
-- Results: `outputs/semantic/`
-- Main commands: `semantic-run`, `semantic-summarize`, and
-  `semantic-diagnose-representations`
-
-### 2. Prediction-token context requirements
-
-`kvstudy/token_context/` measures how removing distant context changes the
-next-token distribution for different target-token categories. This track is
-about token-specific context/KV retention and does not use semantic segments as
-the experimental treatment.
-
-- Configs: `configs/token_context/`
-- Results: `outputs/token_context/`
-- Main commands: `context-prepare`, `context-run`, `context-summarize`,
-  `context-profile-need`, `context-run-sparse`, `context-benchmark-attention`,
-  `context-benchmark-inference`, `context-run-cached-sink`,
-  `context-compare-predictors`, and `context-report-sink-predictors`
-
-The checked-in result directory is intentionally compact: `SUMMARY.md` contains
-the consolidated trends and `KEY_RESULTS.csv` contains the core numeric values.
-Detailed per-token, per-block, per-head, and intermediate reports are
-regenerable but not versioned.
-
-The checked-in systematic reports cover Qwen2.5-7B and a same-document
-Qwen2.5-0.5B replication. Both find that content targets need more context than
-function targets at 128, 512, and 2,048 retained positions, with the difference
-disappearing at 8,192 positions.
-
-The adaptive inference prototype uses 128-token KV pages, a mandatory
-2,048-token recent window, full-context fallback for V1, and query-selected
-remote pages for V2. See
-`outputs/token_context/qwen25_7b_32k/SUMMARY.md` for the profile, quality,
-performance, sink, category, and explicit negative results. Across three
-order-rotated trials on
-the measured PPU, V1 reaches 1.050x/1.064x mean end-to-end speedup at 16K/24K.
-V2 is near break-even at 16K and reaches only 1.038x at 24K, motivating a fused
-recent-plus-paged kernel.
-
-The cached-decode follow-up changes the sink conclusion materially. After a
-dense prefill, retaining only the first KV token plus the recent window reduces
-32K/2,048-budget ΔCE from 0.6495 to 0.0178. The effect beats equal random and
-strided remote controls and disappears when prefix values are zeroed. Current
-two-kernel and copy-then-kernel implementations are too slow, so the next
-operator target is a fused one-token-sink + recent + optional sparse-remote
-online-softmax kernel.
-
-The 16K category follow-up profiles the entire KV axis in 128-token blocks for
-ten layers. Content/function attention-position curves overlap strongly, but
-content words become significantly more quality-sensitive when recent KV is
-tightened: content-minus-function ΔCE grows from +0.0015 at recent-8,191 to
-+0.2437 at recent-127 (difference-in-differences +0.2422, document-bootstrap
-95% CI `[+0.0239,+0.4899]`). Full-KV PNG figures are generated locally and are
-intentionally excluded from Git.
-
-A head-resolved follow-up finds that layer identity dominates regional attention
-variance (marginal eta-squared 0.159–0.496 versus 0.0003–0.0015 for coarse
-category). No individual block or head survives global BH-FDR with eight
-documents, while five layer-level middle-remote effects do. The signal reverses
-across depth and is distributed: all 840 head/region features classify
-content/function with held-out AUC 0.778.
-
-Top-1 changes are also severity-audited rather than treated as equally harmful.
-At recent-127, 21.7% of tokens change Top-1; among those changes, 30.6% lose a
-dense-correct ground-truth token, 7.2% correct a dense error, 15.3% are
-surface/punctuation changes, and 46.8% are potential semantic substitutions.
-
-## Shared infrastructure
+The deployable design is:
 
 ```text
-kvstudy/data.py       PG-19, Wikipedia, and HotpotQA preparation
-kvstudy/segments.py   token/POS categories and semantic segmentation
-kvstudy/model.py      model loading and Q/K projection
-artifacts/            regenerable corpora and IDF data (gitignored)
+Prefix-1 sink (always retained)
+        +
+contiguous recent KV
+        +
+optional sparse remote pages or full fallback
 ```
 
-Large prepared corpora, per-document Parquet shards, model caches, Q/K tensors,
-and attention matrices are not versioned. Only condensed reports and selected
-aggregate tables are checked in.
+The consolidated results are in
+`outputs/token_context/qwen25_7b_32k/SUMMARY.md`; core numeric values are in
+`KEY_RESULTS.csv`. Detailed intermediate outputs are local-only and ignored.
+
+## Code layout
+
+```text
+kvstudy/runtime/
+  engine.py              shared autoregressive DecodeEngine
+  kv_cache.py            cache indexing, cloning, and pruning
+
+kvstudy/backends/
+  policies.py            dense, recent, sink+recent, and sparse backends
+  routed_inference.py    optimized FlashInfer attention integration
+  block_attention.py     page landmarks and sparse page selection
+
+kvstudy/profiling/
+  context_length_mlp.py  24K dependency labels, token traits, and small MLP
+  experiment.py          compact-context ablations
+  sink_cached_experiment.py
+  sparse_experiment.py
+  full_kv_distribution.py
+  ...                    offline profiling, statistics, and reports
+
+kvstudy/semantic/        independent semantic-segment routing study
+kvstudy/cli/main.py      thin CLI dispatch
+```
+
+Runtime code does not depend on profiling code. Profiling experiments use the
+same `DecodeEngine` and plug in policy backends.
+
+## Core API
+
+```python
+from kvstudy.backends import DenseBackend, SinkRecentBackend, SparseBackend
+from kvstudy.runtime import DecodeEngine
+
+engine = DecodeEngine(model)
+
+dense_logits = engine.decode(cache, query_ids, start_position, DenseBackend())
+
+compact_logits = engine.decode(
+    cache,
+    query_ids,
+    start_position,
+    SinkRecentBackend(total_budget=256, sink_tokens=1),
+)
+```
+
+All backends implement the same two methods:
+
+```python
+backend.install(model)
+backend.before_step(model, step)
+```
+
+## Main findings
+
+- Prefix-1 is essential after dense prefill: at 32K and a 2,048-position
+  budget, it reduces mean delta CE from 0.6495 to 0.0178.
+- Content words become more context-sensitive than function words as recent KV
+  is tightened, but category is only a weak routing prior.
+- Layer identity dominates average attention layout; category information is
+  distributed across heads and reverses direction across depth.
+- Existing two-kernel and copy-based sink implementations are too slow. A
+  fused sink + recent + sparse-remote online-softmax kernel is required.
+- Current pre-forward context-need predictors remain weak.
+
+## 24K / 256-token dependency experiment
+
+The new unclassified-token experiment uses 16 documents, 2,048 target tokens,
+24K context, and Prefix-1 + Recent-255 as the smallest budget.
+
+```bash
+for i in 0 1 2 3; do
+  CUDA_VISIBLE_DEVICES=$i python -m kvstudy context-run-top1-severity \
+    --config configs/token_context/qwen25_7b_32k.yaml \
+    --context-length 24576 --documents 16 --eval-tokens 128 \
+    --budgets 256 512 2048 8192 --shard-index $i --num-shards 4 &
+done
+wait
+
+python -m kvstudy context-profile-24k-mlp \
+  --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+At budget 256, 43.26% of tokens have delta CE above 0.1 and 24.76% change
+Top-1. After the fact, long-dependent target tokens are less likely to repeat
+within the previous 256 tokens and are modestly more novel in embedding space,
+but the best individual trait AUC is only 0.574. These target traits are
+diagnostic and are not exposed to the causal MLP.
+
+The document-held-out 32-unit multiclass MLP reaches 46.9% exact budget
+accuracy but under-routes 44.3% of tokens. An ordinal MLP has only 0.524 AUC
+for deciding whether more than 256 KV is needed. A conservative ordinal P80
+decision reduces under-routing to 9.3% while increasing mean budget to 15.1K.
+This is not a deployable router.
 
 ## Setup
 
@@ -100,124 +119,17 @@ python -m pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-Prepare shared pilot data and run the semantic smoke test:
+Install optimized decode dependencies separately:
 
 ```bash
-python -m kvstudy prepare --config configs/semantic/smoke.yaml
-python -m kvstudy semantic-run --config configs/semantic/smoke.yaml
-python -m kvstudy semantic-summarize --config configs/semantic/smoke.yaml
+python -m pip install -r requirements-kernels.txt
 ```
 
-Prepare and run the sink-aware 32K target-token experiment with four workers:
+List all profiling and benchmark commands:
 
 ```bash
-python -m kvstudy context-prepare \
-  --config configs/token_context/qwen25_7b_32k.yaml
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
-python -m kvstudy context-summarize --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-profile-need --config configs/token_context/qwen25_7b_32k.yaml
+python -m kvstudy --help
 ```
-
-Run the V2 32K sparse-quality experiment (one process per GPU), summarize it,
-then benchmark optimized kernels and real decode:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-sparse --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
-python -m kvstudy context-summarize-sparse --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-benchmark-attention --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 32768
-python -m kvstudy context-benchmark-inference --config configs/token_context/qwen25_7b_32k.yaml --context-lengths 16384 24576 --decode-tokens 128
-python -m kvstudy context-report-engineering --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-explore-router --config configs/token_context/qwen25_7b_32k.yaml
-```
-
-Run the real cached-decode sink experiment with four GPUs, then compare all
-predictor mechanisms on the corrected sink-aware baseline:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-cached-sink --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
-python -m kvstudy context-summarize-sink --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-compare-predictors --config configs/token_context/qwen25_7b_32k.yaml
-python -m kvstudy context-report-sink-predictors --config configs/token_context/qwen25_7b_32k.yaml
-```
-
-Profile and plot all 16K KV positions by next-token lexical category:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
-python -m kvstudy context-analyze-sink-categories --config configs/token_context/qwen25_7b_32k.yaml
-```
-
-Resolve attention by head, rank-align remote blocks, and apply paired
-permutation tests with BH-FDR correction:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
-python -m kvstudy context-analyze-fine-attention --config configs/token_context/qwen25_7b_32k.yaml
-```
-
-Capture and classify the actual dense/compact Top-1 substitutions:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
-python -m kvstudy context-summarize-top1-severity --config configs/token_context/qwen25_7b_32k.yaml
-```
-
-FlashInfer is required only for the optimized decode commands; the profiling
-and quality-analysis commands remain ordinary PyTorch/Transformers code. Install
-the kernel dependencies with `python -m pip install -r requirements-kernels.txt`.
-The router exploration can emit a deployable FP16 vocabulary LUT and a
-three-feature speculative verifier; these detailed artifacts are ignored by
-default.
-
-Evaluate the causal lightweight router and exercise real `DynamicCache`
-pruning:
-
-```bash
-python -m kvstudy context-evaluate-router \
-  --config configs/token_context/qwen25_7b_32k.yaml \
-  --draft-config configs/token_context/qwen25_05b_32k.yaml
-python -m kvstudy context-benchmark-cache \
-  --config configs/token_context/qwen25_7b_32k.yaml \
-  --prefill-tokens 8192 --repeats 20
-```
-
-Use `python -m kvstudy --help` to list commands. Set `HF_HOME` to relocate
-model and dataset downloads.
-
-## Full semantic run
-
-`configs/semantic/qwen25_7b.yaml` specifies the 1,000-document run over PG-19,
-Wikipedia, and HotpotQA. Run one process per GPU; each process sees its assigned
-physical GPU as `cuda:0`.
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python -m kvstudy semantic-run --config configs/semantic/qwen25_7b.yaml --shard-index 0 --num-shards 4
-CUDA_VISIBLE_DEVICES=1 python -m kvstudy semantic-run --config configs/semantic/qwen25_7b.yaml --shard-index 1 --num-shards 4
-CUDA_VISIBLE_DEVICES=2 python -m kvstudy semantic-run --config configs/semantic/qwen25_7b.yaml --shard-index 2 --num-shards 4
-CUDA_VISIBLE_DEVICES=3 python -m kvstudy semantic-run --config configs/semantic/qwen25_7b.yaml --shard-index 3 --num-shards 4
-```
-
-`semantic-summarize` automatically combines matching shard files. Setting
-`position_mode: raw` skips RoPE only in the final QK score diagnostic; it does
-not create a no-position language model.
 
 ## Tests
 

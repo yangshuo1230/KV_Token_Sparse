@@ -19,3 +19,13 @@ performance,mean_speedup,v2_24K,1.038,three trials
 performance,mean_speedup,two_kernel_sink1_24K,0.737,too slow
 predictor,context_need_auc,speculative_confidence,0.658,requires replay
 predictor,context_need_auc,pre_forward_mechanisms,0.47-0.51,not reliable
+24k_256,dependent_fraction,delta_ce_gt_0.1,0.4326,2048 targets 16 documents
+24k_256,top1_change_rate,prefix1_recent255,0.2476,dense 24K reference
+24k_256,required_full_fraction,isotonic_delta_ce_0.1,0.1748,full 24576
+24k_256,target_repeat_last256,long_vs_short,0.431_vs_0.555,long tokens repeat less
+24k_256,embedding_novelty_last256,long_vs_short,0.437_vs_0.339,univariate AUC 0.574
+mlp,exact_budget_accuracy,document_4fold,0.469,32-unit hidden layer
+mlp,under_route_rate,argmax,0.443,mean budget 2089
+mlp,under_route_rate,conservative_p80,0.115,mean budget 13470
+mlp,long256_auc,ordinal_head,0.524,near random
+mlp,under_route_rate,ordinal_p80,0.093,mean budget 15055

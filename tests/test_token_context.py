@@ -4,20 +4,24 @@ import pandas as pd
 import torch
 
 from kvstudy.config import Config, ContextConfig
-from kvstudy.token_context.categories import lexical_categories
-from kvstudy.token_context.block_attention import recent_page_indices, select_sparse_pages
-from kvstudy.token_context.experiment import _distribution_metrics, retained_indices
-from kvstudy.token_context.kv_cache import cache_token_count, prune_legacy_cache
-from kvstudy.token_context.profile import theoretical_attention_cost
-from kvstudy.token_context.report import summarize_context
-from kvstudy.token_context.router import cross_validated_type_scores
-from kvstudy.token_context.router_exploration import _document_folds
-from kvstudy.token_context.sink_cached_experiment import fixed_remote_indices
-from kvstudy.token_context.full_kv_distribution import (
+from kvstudy.profiling.categories import lexical_categories
+from kvstudy.backends.block_attention import recent_page_indices, select_sparse_pages
+from kvstudy.profiling.experiment import _distribution_metrics
+from kvstudy.runtime.kv_cache import (
+    cache_token_count,
+    prune_legacy_cache,
+    retained_indices,
+)
+from kvstudy.profiling.profile import theoretical_attention_cost
+from kvstudy.profiling.report import summarize_context
+from kvstudy.profiling.router import cross_validated_type_scores
+from kvstudy.profiling.router_exploration import _document_folds
+from kvstudy.profiling.sink_cached_experiment import fixed_remote_indices
+from kvstudy.profiling.full_kv_distribution import (
     FullKVDistributionRecorder,
     HeadResolvedDistributionRecorder,
 )
-from kvstudy.token_context.top1_severity import _severity
+from kvstudy.profiling.top1_severity import _severity
 
 
 def _token(text: str, pos: str, dep: str = "", punct: bool = False, number: bool = False):

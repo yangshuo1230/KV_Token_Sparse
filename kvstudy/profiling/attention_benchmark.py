@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 
 from ..config import Config
-from .block_attention import page_landmarks, recent_page_indices, select_sparse_pages
+from ..backends.block_attention import page_landmarks, recent_page_indices, select_sparse_pages
 from .router import _load_metrics
 
 

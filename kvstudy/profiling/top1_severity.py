@@ -14,14 +14,9 @@ from tqdm import tqdm
 from ..config import Config
 from ..model import load_model
 from .experiment import _distribution_metrics
-from .kv_cache import clone_dynamic_cache
-from .routed_inference import (
-    FixedRemoteDecodeController,
-    configure_fixed_remote_route,
-    configure_v1_route,
-    enable_routed_decode,
-)
-from .sink_cached_experiment import _decode_teacher_forced
+from ..runtime.kv_cache import clone_dynamic_cache
+from ..backends import DenseBackend, SinkRecentBackend
+from ..runtime.engine import DecodeEngine
 from .sink_category_analysis import _category_metadata
 from .sink_report import _complete_shards
 
@@ -42,6 +37,7 @@ def run_top1_severity_experiment(
     records = [json.loads(line) for line in path.open(encoding="utf-8")][:documents]
     records = records[shard_index::num_shards]
     model, tokenizer = load_model(cfg.model, cfg.device, cfg.dtype)
+    engine = DecodeEngine(model)
     embedding = model.get_input_embeddings().weight
     rows: list[dict] = []
 
@@ -60,10 +56,10 @@ def run_top1_severity_experiment(
         original_cache = prefill.past_key_values
         queries = ids[:, prefill_length : context_length - 1]
         targets = ids[0, target_start:context_length]
-        enable_routed_decode(model)
         dense_cache = clone_dynamic_cache(original_cache)
-        configure_v1_route(model, recent_budget=max(budgets), use_long_context=True)
-        full_logits = _decode_teacher_forced(model, dense_cache, queries, prefill_length)
+        full_logits = engine.decode(
+            dense_cache, queries, prefill_length, DenseBackend()
+        )
         del dense_cache
         full_probability = torch.softmax(full_logits.float(), dim=-1)
         full_values, full_ids = full_probability.topk(2, dim=-1)
@@ -72,12 +68,12 @@ def run_top1_severity_experiment(
 
         for budget in budgets:
             cache = clone_dynamic_cache(original_cache)
-            controller = FixedRemoteDecodeController(
-                torch.tensor([0], device=cfg.device),
-                recent_tokens=budget - 1,
+            compact_logits = engine.decode(
+                cache,
+                queries,
+                prefill_length,
+                SinkRecentBackend(total_budget=budget, sink_tokens=1),
             )
-            configure_fixed_remote_route(model, controller)
-            compact_logits = _decode_teacher_forced(model, cache, queries, prefill_length)
             compact_probability = torch.softmax(compact_logits.float(), dim=-1)
             compact_values, compact_ids = compact_probability.topk(2, dim=-1)
             compact_target_logits = compact_logits[target_rows, targets]

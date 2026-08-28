@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from ..config import Config
 from ..model import decoder_layers, load_model
-from .block_attention import page_landmarks, recent_page_indices, select_sparse_pages
+from ..backends.block_attention import page_landmarks, recent_page_indices, select_sparse_pages
 from .experiment import _distribution_metrics
 
 

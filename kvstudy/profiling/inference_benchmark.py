@@ -10,7 +10,7 @@ import numpy as np
 
 from ..config import Config
 from ..model import load_model
-from .routed_inference import (
+from ..backends.routed_inference import (
     FixedRemoteDecodeController,
     SparseDecodeController,
     configure_fixed_remote_route,
@@ -19,7 +19,7 @@ from .routed_inference import (
     enable_routed_decode,
 )
 from .router import _load_metrics
-from .kv_cache import clone_dynamic_cache
+from ..runtime.kv_cache import clone_dynamic_cache
 
 
 @torch.inference_mode()

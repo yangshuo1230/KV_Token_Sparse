@@ -102,5 +102,31 @@ rather than a latency optimization.
    at least 10K document-independent examples and verify an oracle dynamic
    policy beats equal-average-budget static windows.
 
+## 24K dependency at a 256-token budget
+
+This follow-up removes token-category conditioning. It uses 2,048 targets from
+16 documents, Prefix-1 + Recent-255, and a dense 24K reference.
+
+- Delta CE > 0.05: 48.00%.
+- Delta CE > 0.10: 43.26%.
+- Delta CE > 0.20: 35.40%.
+- Delta CE > 0.50: 20.21%.
+- Top-1 changed: 24.76%.
+
+After per-token isotonic monotonicization, minimum-budget labels are 51.03% at
+256, 8.64% at 512, 10.99% at 2K, 11.87% at 8K, and 17.48% at full 24K.
+
+After the fact, long-dependent targets are less likely to repeat within the previous 256
+tokens (43.1% versus 55.5%) and have higher local embedding novelty (0.437
+versus 0.339), but the strongest individual trait reaches only AUC 0.574. These
+target traits are diagnostic and unavailable to a causal router.
+
+A 32-unit MLP over PCA-reduced current/last-4/last-16 embeddings and causal
+history scalars achieves 46.9% exact budget accuracy in document-held-out
+validation. Argmax under-routes 44.3% of tokens. The ordinal head has only
+0.524 AUC for `required > 256`. A conservative ordinal P80 decision reduces
+under-routing to 9.3%, but spends 15.1K KV on average. These features are
+insufficient for an efficient learned router.
+
 Detailed outputs are intentionally not versioned here. Every experiment and
 report remains reproducible from the commands documented in the repository.

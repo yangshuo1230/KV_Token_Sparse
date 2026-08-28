@@ -9,7 +9,7 @@ import torch
 
 from ..config import Config
 from ..model import load_model
-from .kv_cache import cache_token_count, prune_dynamic_cache
+from ..runtime.kv_cache import cache_token_count, prune_dynamic_cache
 
 
 def _cache_bytes(cache) -> int:

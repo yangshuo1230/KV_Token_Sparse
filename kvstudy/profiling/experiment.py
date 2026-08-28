@@ -13,20 +13,7 @@ from ..data import _pg19
 from ..model import decoder_layers, load_model
 from ..segments import load_nlp
 from .categories import annotate_targets
-
-
-def retained_indices(length: int, cache_budget: int, sink_size: int) -> list[int]:
-    """Return a fixed-budget sink-plus-recent cache in causal order."""
-    if length < cache_budget:
-        raise ValueError("cache budget cannot exceed sequence length")
-    if not 0 <= sink_size < cache_budget:
-        raise ValueError("sink size must be in [0, cache_budget)")
-    recent_size = cache_budget - sink_size
-    recent_start = length - recent_size
-    # Very short sequences can make the two ranges overlap. The length check
-    # above prevents that for fixed-budget policies, but keep this robust for
-    # direct callers.
-    return list(range(min(sink_size, recent_start))) + list(range(recent_start, length))
+from ..runtime.kv_cache import retained_indices
 
 
 def prepare_contexts(cfg: Config) -> Path:

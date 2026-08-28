@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from ..config import Config
 from ..model import load_model
-from .routed_inference import configure_v1_route, enable_routed_decode
+from ..backends.routed_inference import configure_v1_route, enable_routed_decode
 
 
 class FullKVDistributionRecorder:
