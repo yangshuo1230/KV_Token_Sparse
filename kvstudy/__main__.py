@@ -25,6 +25,10 @@ from .token_context.sink_report import summarize_attention_sink
 from .token_context.sink_predictor_summary import write_sink_predictor_summary
 from .token_context.sink_category_analysis import analyze_sink_categories
 from .token_context.full_kv_distribution import run_full_kv_distribution
+from .token_context.top1_severity import (
+    run_top1_severity_experiment,
+    summarize_top1_severity,
+)
 
 
 COMMANDS = (
@@ -52,6 +56,8 @@ COMMANDS = (
     "context-report-sink-predictors",
     "context-analyze-sink-categories",
     "context-run-full-kv-distribution",
+    "context-run-top1-severity",
+    "context-summarize-top1-severity",
 )
 
 
@@ -90,6 +96,13 @@ def main() -> None:
             command.add_argument("--documents", type=int, default=8)
             command.add_argument("--eval-tokens", type=int, default=64)
             command.add_argument("--block-size", type=int, default=128)
+            command.add_argument("--shard-index", type=int, default=0)
+            command.add_argument("--num-shards", type=int, default=1)
+        if name == "context-run-top1-severity":
+            command.add_argument("--context-length", type=int, default=16384)
+            command.add_argument("--documents", type=int, default=8)
+            command.add_argument("--eval-tokens", type=int, default=64)
+            command.add_argument("--budgets", type=int, nargs="+", default=[128, 512, 2048, 8192])
             command.add_argument("--shard-index", type=int, default=0)
             command.add_argument("--num-shards", type=int, default=1)
     args = parser.parse_args()
@@ -156,6 +169,18 @@ def main() -> None:
             args.shard_index,
             args.num_shards,
         ))
+    elif args.command == "context-run-top1-severity":
+        print(run_top1_severity_experiment(
+            cfg,
+            args.context_length,
+            args.documents,
+            args.eval_tokens,
+            args.budgets,
+            args.shard_index,
+            args.num_shards,
+        ))
+    elif args.command == "context-summarize-top1-severity":
+        print(*summarize_top1_severity(cfg), sep="\n")
 
 
 if __name__ == "__main__":

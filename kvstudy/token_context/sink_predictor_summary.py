@@ -19,6 +19,8 @@ def write_sink_predictor_summary(cfg: Config) -> Path:
     category_interactions = pd.read_csv(
         cfg.output_dir / "sink_category_interactions_16k.csv"
     )
+    top1_summary = pd.read_csv(cfg.output_dir / "top1_change_severity_summary.csv")
+    top1_severity = pd.read_csv(cfg.output_dir / "top1_change_severity_by_category.csv")
 
     def contrast(name: str, remote: int, metric: str = "delta_ce") -> pd.Series:
         return contrasts[
@@ -73,6 +75,19 @@ def write_sink_predictor_summary(cfg: Config) -> Path:
     category_interaction = category_interactions[
         category_interactions.metric.eq("delta_ce")
     ].iloc[0]
+    severity_lines = []
+    for recent_count in (127, 511, 2047, 8191):
+        summary_row = top1_summary[top1_summary.recent_count.eq(recent_count)].iloc[0]
+        selected = top1_severity[top1_severity.recent_count.eq(recent_count)]
+        counts = selected.groupby("severity").changes.sum()
+        total = counts.sum()
+        severity_lines.append(
+            f"| {recent_count:,} | {100*summary_row.top1_change_rate:.1f}% | "
+            f"{100*counts.get('definite_harm_full_correct_lost', 0)/total:.1f}% | "
+            f"{100*counts.get('definite_benefit_compact_correct', 0)/total:.1f}% | "
+            f"{100*counts.get('surface_or_punctuation', 0)/total:.1f}% | "
+            f"{100*counts.get('potential_semantic_change', 0)/total:.1f}% |"
+        )
     latency_lines = []
     for length in (16384, 24576):
         group = latency_mean.loc[length]
@@ -129,6 +144,18 @@ def write_sink_predictor_summary(cfg: Config) -> Path:
         "the effect is selective information/value sensitivity, not a universal increase in "
         "total remote attention mass. See `SINK_CATEGORY_16K_RESULTS.md` and the accompanying "
         "all-KV figures.\n\n"
+        "## What Top-1 changes mean\n\n"
+        "The table separates exact correctness transitions from lightweight semantic "
+        "proxies. All columns after change rate are fractions of changed tokens.\n\n"
+        "| Recent | Change rate | Dense-correct lost | Compact corrected dense | Surface/punctuation | Potential semantic |\n"
+        "|---:|---:|---:|---:|---:|---:|\n" + "\n".join(severity_lines)
+        + "\n\nAt recent-127, 30.6% of changes are definitely harmful exact-token "
+        "transitions and 40.5% of changed tokens have ΔCE > 0.5, so the change rate is not "
+        "mostly harmless formatting noise. At recent-8,191, surface/punctuation changes "
+        "become the largest bucket. `Potential semantic` is deliberately not called a "
+        "confirmed semantic error; it means the change is neither an exact correctness "
+        "transition nor a normalized surface match nor embedding-near. See "
+        "`TOP1_CHANGE_SEVERITY_RESULTS.md` and `top1_change_examples.csv`.\n\n"
         "## Predictor mechanisms on the corrected sink-aware baseline\n\n"
         "The target is whether 32K cached decode with prefix-1 + recent-2,047 still has "
         "ΔCE > 0.1 versus dense. Results below use a 25% full-route rate and held-out "

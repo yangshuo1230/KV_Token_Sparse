@@ -71,6 +71,13 @@ tightened: content-minus-function ΔCE grows from +0.0015 at recent-8,191 to
 figures are generated locally under `outputs/token_context/qwen25_7b_32k/`
 and intentionally excluded from Git.
 
+Top-1 changes are also severity-audited rather than treated as equally harmful.
+At recent-127, 21.7% of tokens change Top-1; among those changes, 30.6% lose a
+dense-correct ground-truth token, 7.2% correct a dense error, 15.3% are
+surface/punctuation changes, and 46.8% are potential semantic substitutions.
+See `TOP1_CHANGE_SEVERITY_RESULTS.md` and the inspectable token triples in
+`top1_change_examples.csv`.
+
 ## Shared infrastructure
 
 ```text
@@ -148,6 +155,16 @@ CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-full-kv-distribution --conf
 CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
 CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
 python -m kvstudy context-analyze-sink-categories --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+Capture and classify the actual dense/compact Top-1 substitutions:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
+CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
+CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
+CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-top1-severity --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
+python -m kvstudy context-summarize-top1-severity --config configs/token_context/qwen25_7b_32k.yaml
 ```
 
 FlashInfer is required only for the optimized decode commands; the profiling

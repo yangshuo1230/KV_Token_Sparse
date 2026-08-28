@@ -14,6 +14,7 @@ from kvstudy.token_context.router import cross_validated_type_scores
 from kvstudy.token_context.router_exploration import _document_folds
 from kvstudy.token_context.sink_cached_experiment import fixed_remote_indices
 from kvstudy.token_context.full_kv_distribution import FullKVDistributionRecorder
+from kvstudy.token_context.top1_severity import _severity
 
 
 def _token(text: str, pos: str, dep: str = "", punct: bool = False, number: bool = False):
@@ -159,3 +160,24 @@ def test_full_kv_distribution_block_mass_sums_to_one():
     recorder(module, query, key, value, scaling=0.5)
     assert len(recorder.rows) == 3
     assert abs(sum(row["attention_mass_mean"] for row in recorder.rows) - 1) < 1e-6
+
+
+def test_top1_severity_prioritizes_correctness_and_surface_changes():
+    harmful = pd.Series({
+        "top1_changed": True,
+        "full_correct": True,
+        "compact_correct": False,
+        "full_top1_token": " surgeon",
+        "compact_top1_token": " physician",
+        "top1_embedding_cosine": 0.95,
+    })
+    surface = pd.Series({
+        "top1_changed": True,
+        "full_correct": False,
+        "compact_correct": False,
+        "full_top1_token": "Hello",
+        "compact_top1_token": " hello ",
+        "top1_embedding_cosine": 0.1,
+    })
+    assert _severity(harmful) == "definite_harm_full_correct_lost"
+    assert _severity(surface) == "surface_or_punctuation"

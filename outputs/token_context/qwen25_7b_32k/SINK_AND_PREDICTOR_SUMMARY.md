@@ -23,6 +23,19 @@ Both generic implementations are too slow. A deployable path needs one fused ker
 
 Sink removes the dominant structural failure, but it does not make lexical class irrelevant. At 16K with prefix-1, content-minus-function ΔCE is +0.2437 when only 127 recent tokens remain (95% CI [+0.0245, +0.5057]), versus +0.0015 with 8,191 recent tokens. The tight-minus-wide interaction is +0.2422 (95% CI [+0.0239, +0.4899]). Thus content words become significantly more context-sensitive as recent KV is tightened. Full-KV position curves nevertheless overlap strongly across categories: the effect is selective information/value sensitivity, not a universal increase in total remote attention mass. See `SINK_CATEGORY_16K_RESULTS.md` and the accompanying all-KV figures.
 
+## What Top-1 changes mean
+
+The table separates exact correctness transitions from lightweight semantic proxies. All columns after change rate are fractions of changed tokens.
+
+| Recent | Change rate | Dense-correct lost | Compact corrected dense | Surface/punctuation | Potential semantic |
+|---:|---:|---:|---:|---:|---:|
+| 127 | 21.7% | 30.6% | 7.2% | 15.3% | 46.8% |
+| 511 | 16.2% | 18.1% | 7.2% | 24.1% | 50.6% |
+| 2,047 | 9.4% | 18.8% | 2.1% | 20.8% | 58.3% |
+| 8,191 | 6.1% | 19.4% | 3.2% | 45.2% | 32.3% |
+
+At recent-127, 30.6% of changes are definitely harmful exact-token transitions and 40.5% of changed tokens have ΔCE > 0.5, so the change rate is not mostly harmless formatting noise. At recent-8,191, surface/punctuation changes become the largest bucket. `Potential semantic` is deliberately not called a confirmed semantic error; it means the change is neither an exact correctness transition nor a normalized surface match nor embedding-near. See `TOP1_CHANGE_SEVERITY_RESULTS.md` and `top1_change_examples.csv`.
+
 ## Predictor mechanisms on the corrected sink-aware baseline
 
 The target is whether 32K cached decode with prefix-1 + recent-2,047 still has ΔCE > 0.1 versus dense. Results below use a 25% full-route rate and held-out documents.
