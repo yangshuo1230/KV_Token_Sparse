@@ -1,0 +1,21 @@
+section,metric,setting,value,ci_or_note
+profile,long_context_fraction,recent_2048_delta_ce_gt_0.1,0.2480,32K compact profile
+sink,mean_delta_ce,recent_only_2048_32K,0.6495,cached decode
+sink,mean_delta_ce,prefix1_recent2047_32K,0.0178,cached decode
+sink,paired_delta_ce_improvement,prefix1_vs_recent_32K,-0.6317,"95% CI [-0.9585,-0.3646]"
+category,content_minus_function_delta_ce,recent127_16K,0.2437,"95% CI [0.0245,0.5057]"
+category,content_minus_function_delta_ce,recent8191_16K,0.0015,"95% CI [-0.0376,0.0434]"
+category,tight_minus_wide_interaction,16K,0.2422,"95% CI [0.0239,0.4899]"
+attention,marginal_eta_squared,layer_sink_mass,0.4964,layer dominant
+attention,marginal_eta_squared,category_sink_mass,0.0015,coarse category weak
+attention,category_auc,840_head_region_features,0.778,document-held-out
+top1,change_rate,recent127_16K,0.2168,prefix1 retained
+top1,change_rate,recent8191_16K,0.0605,prefix1 retained
+top1,definite_harm_fraction_of_changes,recent127_16K,0.306,dense-correct lost
+top1,surface_fraction_of_changes,recent8191_16K,0.452,whitespace-case-punctuation
+performance,mean_speedup,v1_16K,1.050,three trials
+performance,mean_speedup,v1_24K,1.064,three trials
+performance,mean_speedup,v2_24K,1.038,three trials
+performance,mean_speedup,two_kernel_sink1_24K,0.737,too slow
+predictor,context_need_auc,speculative_confidence,0.658,requires replay
+predictor,context_need_auc,pre_forward_mechanisms,0.47-0.51,not reliable

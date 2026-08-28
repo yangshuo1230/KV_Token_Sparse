@@ -6,3 +6,6 @@ outputs/**/*.parquet
 outputs/**/*.jsonl
 outputs/**/idf.json
 outputs/**/*.png
+outputs/token_context/qwen25_7b_32k/*
+!outputs/token_context/qwen25_7b_32k/SUMMARY.md
+!outputs/token_context/qwen25_7b_32k/KEY_RESULTS.csv

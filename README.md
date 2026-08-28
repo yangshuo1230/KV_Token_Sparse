@@ -32,11 +32,10 @@ the experimental treatment.
   `context-benchmark-inference`, `context-run-cached-sink`,
   `context-compare-predictors`, and `context-report-sink-predictors`
 
-The reports named `LONG_CONTEXT_RESULTS.md` and `TARGET_TOKEN_RESULTS.md`
-predate the sink-aware experiment. They compare a full context with suffix-only
-inputs and are kept as baseline evidence, not as a deployable KV-cache policy.
-The current experiment compares recent-only with sink-plus-recent policies at
-the same total KV budget.
+The checked-in result directory is intentionally compact: `SUMMARY.md` contains
+the consolidated trends and `KEY_RESULTS.csv` contains the core numeric values.
+Detailed per-token, per-block, per-head, and intermediate reports are
+regenerable but not versioned.
 
 The checked-in systematic reports cover Qwen2.5-7B and a same-document
 Qwen2.5-0.5B replication. Both find that content targets need more context than
@@ -46,9 +45,9 @@ disappearing at 8,192 positions.
 The adaptive inference prototype uses 128-token KV pages, a mandatory
 2,048-token recent window, full-context fallback for V1, and query-selected
 remote pages for V2. See
-`outputs/token_context/qwen25_7b_32k/ADAPTIVE_INFERENCE_RESULTS.md` for the
-profile, theoretical model, 16K/24K end-to-end benchmarks, 32K sparse-quality
-results, and explicit negative results. Across three order-rotated trials on
+`outputs/token_context/qwen25_7b_32k/SUMMARY.md` for the profile, quality,
+performance, sink, category, and explicit negative results. Across three
+order-rotated trials on
 the measured PPU, V1 reaches 1.050x/1.064x mean end-to-end speedup at 16K/24K.
 V2 is near break-even at 16K and reaches only 1.038x at 24K, motivating a fused
 recent-plus-paged kernel.
@@ -56,8 +55,7 @@ recent-plus-paged kernel.
 The cached-decode follow-up changes the sink conclusion materially. After a
 dense prefill, retaining only the first KV token plus the recent window reduces
 32K/2,048-budget ΔCE from 0.6495 to 0.0178. The effect beats equal random and
-strided remote controls and disappears when prefix values are zeroed. See
-`outputs/token_context/qwen25_7b_32k/SINK_AND_PREDICTOR_SUMMARY.md`. Current
+strided remote controls and disappears when prefix values are zeroed. Current
 two-kernel and copy-then-kernel implementations are too slow, so the next
 operator target is a fused one-token-sink + recent + optional sparse-remote
 online-softmax kernel.
@@ -67,24 +65,20 @@ ten layers. Content/function attention-position curves overlap strongly, but
 content words become significantly more quality-sensitive when recent KV is
 tightened: content-minus-function ΔCE grows from +0.0015 at recent-8,191 to
 +0.2437 at recent-127 (difference-in-differences +0.2422, document-bootstrap
-95% CI `[+0.0239,+0.4899]`). See `SINK_CATEGORY_16K_RESULTS.md`. Full-KV PNG
-figures are generated locally under `outputs/token_context/qwen25_7b_32k/`
-and intentionally excluded from Git.
+95% CI `[+0.0239,+0.4899]`). Full-KV PNG figures are generated locally and are
+intentionally excluded from Git.
 
 A head-resolved follow-up finds that layer identity dominates regional attention
 variance (marginal eta-squared 0.159–0.496 versus 0.0003–0.0015 for coarse
 category). No individual block or head survives global BH-FDR with eight
 documents, while five layer-level middle-remote effects do. The signal reverses
 across depth and is distributed: all 840 head/region features classify
-content/function with held-out AUC 0.778. See
-`FINE_GRAINED_ATTENTION_CATEGORY_RESULTS.md`.
+content/function with held-out AUC 0.778.
 
 Top-1 changes are also severity-audited rather than treated as equally harmful.
 At recent-127, 21.7% of tokens change Top-1; among those changes, 30.6% lose a
 dense-correct ground-truth token, 7.2% correct a dense error, 15.3% are
 surface/punctuation changes, and 46.8% are potential semantic substitutions.
-See `TOP1_CHANGE_SEVERITY_RESULTS.md` and the inspectable token triples in
-`top1_change_examples.csv`.
 
 ## Shared infrastructure
 
@@ -189,9 +183,9 @@ python -m kvstudy context-summarize-top1-severity --config configs/token_context
 FlashInfer is required only for the optimized decode commands; the profiling
 and quality-analysis commands remain ordinary PyTorch/Transformers code. Install
 the kernel dependencies with `python -m pip install -r requirements-kernels.txt`.
-The router exploration emits a deployable FP16 vocabulary LUT, a three-feature
-speculative verifier, and an out-of-document accuracy/cost report in
-`ROUTER_EXPLORATION_RESULTS.md`.
+The router exploration can emit a deployable FP16 vocabulary LUT and a
+three-feature speculative verifier; these detailed artifacts are ignored by
+default.
 
 Evaluate the causal lightweight router and exercise real `DynamicCache`
 pruning:
