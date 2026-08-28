@@ -13,6 +13,12 @@ def write_sink_predictor_summary(cfg: Config) -> Path:
     mass = pd.read_csv(cfg.output_dir / "attention_sink_mass_summary.csv")
     predictors = pd.read_csv(cfg.output_dir / "predictor_mechanism_comparison.csv")
     latency = pd.read_csv(cfg.output_dir / "end_to_end_benchmark.csv")
+    category_effects = pd.read_csv(
+        cfg.output_dir / "sink_category_content_function_16k.csv"
+    )
+    category_interactions = pd.read_csv(
+        cfg.output_dir / "sink_category_interactions_16k.csv"
+    )
 
     def contrast(name: str, remote: int, metric: str = "delta_ce") -> pd.Series:
         return contrasts[
@@ -56,6 +62,17 @@ def write_sink_predictor_summary(cfg: Config) -> Path:
         f"{100*row.recall:.1f}% |"
         for row in need.itertuples()
     ]
+    tight_category = category_effects[
+        category_effects.metric.eq("delta_ce")
+        & category_effects.recent_count.eq(127)
+    ].iloc[0]
+    wide_category = category_effects[
+        category_effects.metric.eq("delta_ce")
+        & category_effects.recent_count.eq(8191)
+    ].iloc[0]
+    category_interaction = category_interactions[
+        category_interactions.metric.eq("delta_ce")
+    ].iloc[0]
     latency_lines = []
     for length in (16384, 24576):
         group = latency_mean.loc[length]
@@ -99,6 +116,19 @@ def write_sink_predictor_summary(cfg: Config) -> Path:
         + "\n\nBoth generic implementations are too slow. A deployable path needs one fused "
         "kernel that streams one prefix KV and the contiguous recent window through the "
         "same online softmax without concatenation, a second attention launch, or LSE merge.\n\n"
+        "## Word category after adding sink\n\n"
+        "Sink removes the dominant structural failure, but it does not make lexical class "
+        "irrelevant. At 16K with prefix-1, content-minus-function ΔCE is "
+        f"{tight_category.content_minus_function:+.4f} when only 127 recent tokens remain "
+        f"(95% CI [{tight_category.ci_low:+.4f}, {tight_category.ci_high:+.4f}]), versus "
+        f"{wide_category.content_minus_function:+.4f} with 8,191 recent tokens. The "
+        f"tight-minus-wide interaction is {category_interaction.difference_at_128_minus_difference_at_8192:+.4f} "
+        f"(95% CI [{category_interaction.ci_low:+.4f}, {category_interaction.ci_high:+.4f}]). "
+        "Thus content words become significantly more context-sensitive as recent KV is "
+        "tightened. Full-KV position curves nevertheless overlap strongly across categories: "
+        "the effect is selective information/value sensitivity, not a universal increase in "
+        "total remote attention mass. See `SINK_CATEGORY_16K_RESULTS.md` and the accompanying "
+        "all-KV figures.\n\n"
         "## Predictor mechanisms on the corrected sink-aware baseline\n\n"
         "The target is whether 32K cached decode with prefix-1 + recent-2,047 still has "
         "ΔCE > 0.1 versus dense. Results below use a 25% full-route rate and held-out "

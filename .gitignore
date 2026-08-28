@@ -5,3 +5,4 @@ artifacts/
 outputs/**/*.parquet
 outputs/**/*.jsonl
 outputs/**/idf.json
+outputs/**/*.png

@@ -62,6 +62,15 @@ two-kernel and copy-then-kernel implementations are too slow, so the next
 operator target is a fused one-token-sink + recent + optional sparse-remote
 online-softmax kernel.
 
+The 16K category follow-up profiles the entire KV axis in 128-token blocks for
+ten layers. Content/function attention-position curves overlap strongly, but
+content words become significantly more quality-sensitive when recent KV is
+tightened: content-minus-function ΔCE grows from +0.0015 at recent-8,191 to
++0.2437 at recent-127 (difference-in-differences +0.2422, document-bootstrap
+95% CI `[+0.0239,+0.4899]`). See `SINK_CATEGORY_16K_RESULTS.md`. Full-KV PNG
+figures are generated locally under `outputs/token_context/qwen25_7b_32k/`
+and intentionally excluded from Git.
+
 ## Shared infrastructure
 
 ```text
@@ -129,6 +138,16 @@ CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-cached-sink --config config
 python -m kvstudy context-summarize-sink --config configs/token_context/qwen25_7b_32k.yaml
 python -m kvstudy context-compare-predictors --config configs/token_context/qwen25_7b_32k.yaml
 python -m kvstudy context-report-sink-predictors --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+Profile and plot all 16K KV positions by next-token lexical category:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
+CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
+CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
+CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
+python -m kvstudy context-analyze-sink-categories --config configs/token_context/qwen25_7b_32k.yaml
 ```
 
 FlashInfer is required only for the optimized decode commands; the profiling

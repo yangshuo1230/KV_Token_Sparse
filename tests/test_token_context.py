@@ -13,6 +13,7 @@ from kvstudy.token_context.report import summarize_context
 from kvstudy.token_context.router import cross_validated_type_scores
 from kvstudy.token_context.router_exploration import _document_folds
 from kvstudy.token_context.sink_cached_experiment import fixed_remote_indices
+from kvstudy.token_context.full_kv_distribution import FullKVDistributionRecorder
 
 
 def _token(text: str, pos: str, dep: str = "", punct: bool = False, number: bool = False):
@@ -147,3 +148,14 @@ def test_sink_controls_exclude_prefix_and_are_deterministic():
     assert torch.equal(random_a, random_b)
     assert random_a.min() >= 128 and strided.min() >= 128
     assert len(random_a.unique()) == len(strided.unique()) == 8
+
+
+def test_full_kv_distribution_block_mass_sums_to_one():
+    module = SimpleNamespace(layer_idx=0)
+    recorder = FullKVDistributionRecorder([0], 4, "doc", 10)
+    query = torch.randn(1, 2, 1, 4)
+    key = torch.randn(1, 1, 10, 4)
+    value = torch.randn_like(key)
+    recorder(module, query, key, value, scaling=0.5)
+    assert len(recorder.rows) == 3
+    assert abs(sum(row["attention_mass_mean"] for row in recorder.rows) - 1) < 1e-6

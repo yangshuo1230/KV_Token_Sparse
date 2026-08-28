@@ -23,6 +23,8 @@ from .token_context.sparse_report import summarize_sparse_context
 from .token_context.sink_cached_experiment import run_cached_sink_experiment
 from .token_context.sink_report import summarize_attention_sink
 from .token_context.sink_predictor_summary import write_sink_predictor_summary
+from .token_context.sink_category_analysis import analyze_sink_categories
+from .token_context.full_kv_distribution import run_full_kv_distribution
 
 
 COMMANDS = (
@@ -48,6 +50,8 @@ COMMANDS = (
     "context-summarize-sink",
     "context-compare-predictors",
     "context-report-sink-predictors",
+    "context-analyze-sink-categories",
+    "context-run-full-kv-distribution",
 )
 
 
@@ -79,6 +83,13 @@ def main() -> None:
             command.add_argument("--documents", type=int, default=8)
             command.add_argument("--eval-tokens", type=int, default=64)
             command.add_argument("--budgets", type=int, nargs="+", default=[128, 512, 2048, 8192])
+            command.add_argument("--shard-index", type=int, default=0)
+            command.add_argument("--num-shards", type=int, default=1)
+        if name == "context-run-full-kv-distribution":
+            command.add_argument("--context-length", type=int, default=16384)
+            command.add_argument("--documents", type=int, default=8)
+            command.add_argument("--eval-tokens", type=int, default=64)
+            command.add_argument("--block-size", type=int, default=128)
             command.add_argument("--shard-index", type=int, default=0)
             command.add_argument("--num-shards", type=int, default=1)
     args = parser.parse_args()
@@ -133,6 +144,18 @@ def main() -> None:
         print(*compare_predictor_mechanisms(cfg), sep="\n")
     elif args.command == "context-report-sink-predictors":
         print(write_sink_predictor_summary(cfg))
+    elif args.command == "context-analyze-sink-categories":
+        print(*analyze_sink_categories(cfg), sep="\n")
+    elif args.command == "context-run-full-kv-distribution":
+        print(run_full_kv_distribution(
+            cfg,
+            args.context_length,
+            args.documents,
+            args.eval_tokens,
+            args.block_size,
+            args.shard_index,
+            args.num_shards,
+        ))
 
 
 if __name__ == "__main__":

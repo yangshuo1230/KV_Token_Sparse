@@ -19,6 +19,10 @@ The strongest observed case is 16,384-token layer 4: its first four tokens recei
 
 Both generic implementations are too slow. A deployable path needs one fused kernel that streams one prefix KV and the contiguous recent window through the same online softmax without concatenation, a second attention launch, or LSE merge.
 
+## Word category after adding sink
+
+Sink removes the dominant structural failure, but it does not make lexical class irrelevant. At 16K with prefix-1, content-minus-function ΔCE is +0.2437 when only 127 recent tokens remain (95% CI [+0.0245, +0.5057]), versus +0.0015 with 8,191 recent tokens. The tight-minus-wide interaction is +0.2422 (95% CI [+0.0239, +0.4899]). Thus content words become significantly more context-sensitive as recent KV is tightened. Full-KV position curves nevertheless overlap strongly across categories: the effect is selective information/value sensitivity, not a universal increase in total remote attention mass. See `SINK_CATEGORY_16K_RESULTS.md` and the accompanying all-KV figures.
+
 ## Predictor mechanisms on the corrected sink-aware baseline
 
 The target is whether 32K cached decode with prefix-1 + recent-2,047 still has ΔCE > 0.1 versus dense. Results below use a 25% full-route rate and held-out documents.
