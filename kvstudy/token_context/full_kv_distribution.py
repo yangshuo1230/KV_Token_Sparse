@@ -67,6 +67,77 @@ class FullKVDistributionRecorder:
             })
 
 
+class HeadResolvedDistributionRecorder:
+    """Record per-head KV-region mass and rank-aligned remote selectivity."""
+
+    def __init__(
+        self,
+        layers: list[int],
+        block_size: int,
+        recent_tokens: int,
+        document: str,
+        context_length: int,
+    ) -> None:
+        self.layers = set(layers)
+        self.block_size = block_size
+        self.recent_tokens = recent_tokens
+        self.document = document
+        self.context_length = context_length
+        self.decode_step = -1
+        self.rows: list[dict] = []
+
+    @torch.inference_mode()
+    def __call__(self, module, query, key, value, scaling: float) -> None:
+        if module.layer_idx not in self.layers:
+            return
+        groups = query.shape[1] // key.shape[1]
+        q = query[0, :, 0].float()
+        k = key[0].repeat_interleave(groups, dim=0).float()
+        scores = torch.einsum("hd,hld->hl", q, k) * scaling
+        weights = torch.softmax(scores, dim=-1)
+        length = key.shape[-2]
+        blocks = math.ceil(length / self.block_size)
+        padded = blocks * self.block_size - length
+        if padded:
+            weights = torch.nn.functional.pad(weights, (0, padded))
+        block_mass = weights.view(weights.shape[0], blocks, self.block_size).sum(dim=-1)
+        recent_blocks = math.ceil(self.recent_tokens / self.block_size)
+        recent_start = max(1, blocks - recent_blocks)
+        sink_mass = block_mass[:, 0]
+        remote = block_mass[:, 1:recent_start]
+        recent_mass = block_mass[:, recent_start:].sum(dim=-1)
+        remote_total = remote.sum(dim=-1)
+        remote_distribution = remote / remote_total[:, None].clamp_min(1e-12)
+        entropy = -(
+            remote_distribution * remote_distribution.clamp_min(1e-12).log()
+        ).sum(dim=-1)
+        top_values, top_indices = remote.topk(min(8, remote.shape[-1]), dim=-1)
+        for head in range(query.shape[1]):
+            self.rows.append({
+                "document": self.document,
+                "context_length": self.context_length,
+                "decode_step": self.decode_step,
+                "key_length": length,
+                "layer": module.layer_idx,
+                "head": head,
+                "sink_block_mass": float(sink_mass[head].cpu()),
+                "remote_middle_mass": float(remote_total[head].cpu()),
+                "recent_mass": float(recent_mass[head].cpu()),
+                "remote_top1_mass": float(top_values[head, 0].cpu()),
+                "remote_top4_mass": float(top_values[head, :4].sum().cpu()),
+                "remote_top8_mass": float(top_values[head, :8].sum().cpu()),
+                "remote_top1_fraction": float(
+                    (top_values[head, 0] / remote_total[head].clamp_min(1e-12)).cpu()
+                ),
+                "remote_top4_fraction": float(
+                    (top_values[head, :4].sum() / remote_total[head].clamp_min(1e-12)).cpu()
+                ),
+                "remote_entropy": float(entropy[head].cpu()),
+                "remote_effective_blocks": float(entropy[head].exp().cpu()),
+                "remote_top_block_index": int(top_indices[head, 0].cpu()) + 1,
+            })
+
+
 @torch.inference_mode()
 def run_full_kv_distribution(
     cfg: Config,
@@ -131,6 +202,77 @@ def run_full_kv_distribution(
         "full_kv_attention_distribution.parquet"
         if num_shards == 1
         else f"full_kv_attention_distribution-{shard_index:03d}-of-{num_shards:03d}.parquet"
+    )
+    output = cfg.output_dir / name
+    pd.DataFrame(all_rows).to_parquet(output, index=False)
+    return output
+
+
+@torch.inference_mode()
+def run_head_resolved_distribution(
+    cfg: Config,
+    context_length: int = 16384,
+    documents: int = 8,
+    eval_tokens: int = 64,
+    block_size: int = 128,
+    recent_tokens: int = 2048,
+    shard_index: int = 0,
+    num_shards: int = 1,
+) -> Path:
+    """Profile per-head attention regions and rank-aligned remote blocks."""
+    path = (cfg.data_dir or cfg.output_dir) / "contexts.jsonl"
+    records = [json.loads(line) for line in path.open(encoding="utf-8")][:documents]
+    records = records[shard_index::num_shards]
+    model, tokenizer = load_model(cfg.model, cfg.device, cfg.dtype)
+    all_rows: list[dict] = []
+    layers = [0, 1, 2, 4, 8, 12, 16, 20, 24, 27]
+    for record in tqdm(records, desc=f"head-resolved KV {shard_index + 1}/{num_shards}"):
+        model.set_attn_implementation("sdpa")
+        ids = tokenizer(
+            record["text"],
+            add_special_tokens=True,
+            truncation=True,
+            max_length=context_length,
+            return_tensors="pt",
+        ).input_ids.to(cfg.device)
+        target_start = context_length - eval_tokens
+        prefill_length = target_start - 1
+        prefill = model(input_ids=ids[:, :prefill_length], use_cache=True, return_dict=True)
+        cache = prefill.past_key_values
+        queries = ids[:, prefill_length : context_length - 1]
+        recorder = HeadResolvedDistributionRecorder(
+            layers,
+            block_size,
+            recent_tokens,
+            record["id"],
+            context_length,
+        )
+        enable_routed_decode(model)
+        configure_v1_route(model, recent_budget=context_length, use_long_context=True)
+        for layer in model.model.layers:
+            layer.self_attn._kv_mass_recorder = recorder
+        for step in range(queries.shape[1]):
+            recorder.decode_step = step
+            position = prefill_length + step
+            output = model(
+                input_ids=queries[:, step : step + 1],
+                position_ids=torch.tensor([[position]], device=cfg.device),
+                cache_position=torch.tensor([position], device=cfg.device),
+                past_key_values=cache,
+                use_cache=True,
+                return_dict=True,
+            )
+            cache = output.past_key_values
+        for layer in model.model.layers:
+            layer.self_attn._kv_mass_recorder = None
+        all_rows.extend(recorder.rows)
+        del cache, prefill, ids
+        torch.cuda.empty_cache()
+    cfg.output_dir.mkdir(parents=True, exist_ok=True)
+    name = (
+        "head_resolved_attention_distribution.parquet"
+        if num_shards == 1
+        else f"head_resolved_attention_distribution-{shard_index:03d}-of-{num_shards:03d}.parquet"
     )
     output = cfg.output_dir / name
     pd.DataFrame(all_rows).to_parquet(output, index=False)

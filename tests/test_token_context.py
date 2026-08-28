@@ -13,7 +13,10 @@ from kvstudy.token_context.report import summarize_context
 from kvstudy.token_context.router import cross_validated_type_scores
 from kvstudy.token_context.router_exploration import _document_folds
 from kvstudy.token_context.sink_cached_experiment import fixed_remote_indices
-from kvstudy.token_context.full_kv_distribution import FullKVDistributionRecorder
+from kvstudy.token_context.full_kv_distribution import (
+    FullKVDistributionRecorder,
+    HeadResolvedDistributionRecorder,
+)
 from kvstudy.token_context.top1_severity import _severity
 
 
@@ -160,6 +163,18 @@ def test_full_kv_distribution_block_mass_sums_to_one():
     recorder(module, query, key, value, scaling=0.5)
     assert len(recorder.rows) == 3
     assert abs(sum(row["attention_mass_mean"] for row in recorder.rows) - 1) < 1e-6
+
+
+def test_head_resolved_regions_partition_attention_mass():
+    module = SimpleNamespace(layer_idx=0)
+    recorder = HeadResolvedDistributionRecorder([0], 4, 4, "doc", 10)
+    query = torch.randn(1, 2, 1, 4)
+    key = torch.randn(1, 1, 10, 4)
+    recorder(module, query, key, torch.randn_like(key), scaling=0.5)
+    assert len(recorder.rows) == 2
+    for row in recorder.rows:
+        total = row["sink_block_mass"] + row["remote_middle_mass"] + row["recent_mass"]
+        assert abs(total - 1) < 1e-6
 
 
 def test_top1_severity_prioritizes_correctness_and_surface_changes():

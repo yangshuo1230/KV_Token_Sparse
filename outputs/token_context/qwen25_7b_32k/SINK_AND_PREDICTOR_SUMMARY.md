@@ -23,6 +23,8 @@ Both generic implementations are too slow. A deployable path needs one fused ker
 
 Sink removes the dominant structural failure, but it does not make lexical class irrelevant. At 16K with prefix-1, content-minus-function ΔCE is +0.2437 when only 127 recent tokens remain (95% CI [+0.0245, +0.5057]), versus +0.0015 with 8,191 recent tokens. The tight-minus-wide interaction is +0.2422 (95% CI [+0.0239, +0.4899]). Thus content words become significantly more context-sensitive as recent KV is tightened. Full-KV position curves nevertheless overlap strongly across categories: the effect is selective information/value sensitivity, not a universal increase in total remote attention mass. See `SINK_CATEGORY_16K_RESULTS.md` and the accompanying all-KV figures.
 
+The head-resolved follow-up confirms that layer is the dominant marginal factor: layer explains 15.9%–49.6% of regional-mass variance, while coarse category explains 0.03%–0.15%. No individual block or head survives global FDR with eight documents. Five lower-dimensional layer-level tests survive: content has about 0.8–1.0 pp more middle-remote mass in layers 0/12/16 and 2.0–3.7 pp less in layers 24/27. A held-out classifier over all head/region features reaches category AUC 0.778, consistent with a weak distributed signal rather than a single category-specific head. See `FINE_GRAINED_ATTENTION_CATEGORY_RESULTS.md`.
+
 ## What Top-1 changes mean
 
 The table separates exact correctness transitions from lightweight semantic proxies. All columns after change rate are fractions of changed tokens.

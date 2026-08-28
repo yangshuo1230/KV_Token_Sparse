@@ -1,0 +1,13 @@
+metric,factor,marginal_eta_squared
+sink_block_mass,layer,0.4963624970623053
+sink_block_mass,head,0.012514704127003829
+sink_block_mass,coarse_category,0.0014838108022124207
+sink_block_mass,document,0.02582094002182798
+remote_middle_mass,layer,0.15874684375277276
+remote_middle_mass,head,0.03710617678168961
+remote_middle_mass,coarse_category,0.0002595398713817244
+remote_middle_mass,document,0.030010317475993878
+recent_mass,layer,0.21333063737824925
+recent_mass,head,0.019500865655461018
+recent_mass,coarse_category,0.0006588815935234058
+recent_mass,document,0.0040401124862355

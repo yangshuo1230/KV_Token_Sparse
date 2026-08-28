@@ -24,11 +24,15 @@ from .token_context.sink_cached_experiment import run_cached_sink_experiment
 from .token_context.sink_report import summarize_attention_sink
 from .token_context.sink_predictor_summary import write_sink_predictor_summary
 from .token_context.sink_category_analysis import analyze_sink_categories
-from .token_context.full_kv_distribution import run_full_kv_distribution
+from .token_context.full_kv_distribution import (
+    run_full_kv_distribution,
+    run_head_resolved_distribution,
+)
 from .token_context.top1_severity import (
     run_top1_severity_experiment,
     summarize_top1_severity,
 )
+from .token_context.fine_attention_analysis import analyze_fine_attention
 
 
 COMMANDS = (
@@ -56,8 +60,10 @@ COMMANDS = (
     "context-report-sink-predictors",
     "context-analyze-sink-categories",
     "context-run-full-kv-distribution",
+    "context-run-head-resolved-distribution",
     "context-run-top1-severity",
     "context-summarize-top1-severity",
+    "context-analyze-fine-attention",
 )
 
 
@@ -96,6 +102,14 @@ def main() -> None:
             command.add_argument("--documents", type=int, default=8)
             command.add_argument("--eval-tokens", type=int, default=64)
             command.add_argument("--block-size", type=int, default=128)
+            command.add_argument("--shard-index", type=int, default=0)
+            command.add_argument("--num-shards", type=int, default=1)
+        if name == "context-run-head-resolved-distribution":
+            command.add_argument("--context-length", type=int, default=16384)
+            command.add_argument("--documents", type=int, default=8)
+            command.add_argument("--eval-tokens", type=int, default=64)
+            command.add_argument("--block-size", type=int, default=128)
+            command.add_argument("--recent-tokens", type=int, default=2048)
             command.add_argument("--shard-index", type=int, default=0)
             command.add_argument("--num-shards", type=int, default=1)
         if name == "context-run-top1-severity":
@@ -169,6 +183,17 @@ def main() -> None:
             args.shard_index,
             args.num_shards,
         ))
+    elif args.command == "context-run-head-resolved-distribution":
+        print(run_head_resolved_distribution(
+            cfg,
+            args.context_length,
+            args.documents,
+            args.eval_tokens,
+            args.block_size,
+            args.recent_tokens,
+            args.shard_index,
+            args.num_shards,
+        ))
     elif args.command == "context-run-top1-severity":
         print(run_top1_severity_experiment(
             cfg,
@@ -181,6 +206,8 @@ def main() -> None:
         ))
     elif args.command == "context-summarize-top1-severity":
         print(*summarize_top1_severity(cfg), sep="\n")
+    elif args.command == "context-analyze-fine-attention":
+        print(*analyze_fine_attention(cfg), sep="\n")
 
 
 if __name__ == "__main__":

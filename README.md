@@ -71,6 +71,14 @@ tightened: content-minus-function ΔCE grows from +0.0015 at recent-8,191 to
 figures are generated locally under `outputs/token_context/qwen25_7b_32k/`
 and intentionally excluded from Git.
 
+A head-resolved follow-up finds that layer identity dominates regional attention
+variance (marginal eta-squared 0.159–0.496 versus 0.0003–0.0015 for coarse
+category). No individual block or head survives global BH-FDR with eight
+documents, while five layer-level middle-remote effects do. The signal reverses
+across depth and is distributed: all 840 head/region features classify
+content/function with held-out AUC 0.778. See
+`FINE_GRAINED_ATTENTION_CATEGORY_RESULTS.md`.
+
 Top-1 changes are also severity-audited rather than treated as equally harmful.
 At recent-127, 21.7% of tokens change Top-1; among those changes, 30.6% lose a
 dense-correct ground-truth token, 7.2% correct a dense error, 15.3% are
@@ -155,6 +163,17 @@ CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-full-kv-distribution --conf
 CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
 CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-full-kv-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
 python -m kvstudy context-analyze-sink-categories --config configs/token_context/qwen25_7b_32k.yaml
+```
+
+Resolve attention by head, rank-align remote blocks, and apply paired
+permutation tests with BH-FDR correction:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 0 --num-shards 4
+CUDA_VISIBLE_DEVICES=1 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 1 --num-shards 4
+CUDA_VISIBLE_DEVICES=2 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 2 --num-shards 4
+CUDA_VISIBLE_DEVICES=3 python -m kvstudy context-run-head-resolved-distribution --config configs/token_context/qwen25_7b_32k.yaml --shard-index 3 --num-shards 4
+python -m kvstudy context-analyze-fine-attention --config configs/token_context/qwen25_7b_32k.yaml
 ```
 
 Capture and classify the actual dense/compact Top-1 substitutions:
